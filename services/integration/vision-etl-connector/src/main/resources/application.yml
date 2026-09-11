@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: vision-etl-connector
+server:
+  port: 8082

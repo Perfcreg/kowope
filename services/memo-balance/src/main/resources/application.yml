@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: memo-balance
+server:
+  port: 8088

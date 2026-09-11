@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: clearance-orchestration
+server:
+  port: 8090

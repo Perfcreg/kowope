@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: icad-integration-adapter
+server:
+  port: 8083

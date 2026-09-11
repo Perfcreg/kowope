@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: case-engagement
+server:
+  port: 8091

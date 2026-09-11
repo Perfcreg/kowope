@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: reference-data-config
+server:
+  port: 8087

@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: account-verification
+server:
+  port: 8089
