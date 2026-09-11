@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues and specs live as markdown files under `.scratch/<feature-slug>/`. See `docs/agents/issue-tracker.md`.
+GitHub Issues on `Perfcreg/kowope` (switched from local-markdown once the remote existed). `gh` CLI required — not yet installed on the primary dev machine. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
