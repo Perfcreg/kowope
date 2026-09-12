@@ -5,6 +5,7 @@ import com.uba.mbp.audit.AuditLogger;
 import com.uba.mbp.memobalance.domain.AdjustmentType;
 import com.uba.mbp.memobalance.domain.BalanceAdjustment;
 import com.uba.mbp.memobalance.domain.MemoAccount;
+import com.uba.mbp.memobalance.domain.MemoStatus;
 import com.uba.mbp.memobalance.event.MemoBalanceAdjustedEvent;
 import com.uba.mbp.memobalance.event.MemoLiquidatedEvent;
 import com.uba.mbp.memobalance.exception.InvalidAdjustmentException;
@@ -60,35 +61,27 @@ public class MemoBalanceAdjustmentService {
         MemoAccount account = memoAccountRepository.findByAccountNumber(accountNumber)
                 .orElseThrow(() -> new MemoAccountNotFoundException(accountNumber));
 
-        BigDecimal previousBalance = account.getBalance();
-
-        // Ticket 06: a payment larger than the outstanding balance still liquidates
-        // the account — the excess is flagged as unallocated, not rejected outright.
-        BigDecimal newBalance;
-        if (amount.compareTo(previousBalance) > 0) {
-            BigDecimal unallocated = amount.subtract(previousBalance);
-            newBalance = BigDecimal.ZERO.setScale(previousBalance.scale());
-            exceptionService.raiseUnallocatedPayment(account, unallocated, actor);
-        } else {
-            newBalance = previousBalance.subtract(amount);
-        }
-
         var now = clock.instant();
-
-        account.applyAdjustedBalance(newBalance, now);
+        var result = account.adjust(amount, now);
         memoAccountRepository.save(account);
 
-        balanceAdjustmentRepository.save(
-                BalanceAdjustment.record(account.getId(), type, previousBalance, newBalance, now));
+        balanceAdjustmentRepository.save(BalanceAdjustment.record(
+                account.getId(), type, result.previousBalance(), result.newBalance(), now));
 
         kafkaTemplate.send(MemoTopics.MEMO_BALANCE_ADJUSTED, accountNumber,
-                new MemoBalanceAdjustedEvent(accountNumber, type, previousBalance, newBalance, now));
+                new MemoBalanceAdjustedEvent(accountNumber, type, result.previousBalance(), result.newBalance(), now));
 
         auditLogger.record(new AuditEvent(
                 now, actor, "MEMO_BALANCE_ADJUSTED", "MemoAccount", accountNumber,
-                "memo-balance", type + ": " + previousBalance + " -> " + newBalance));
+                "memo-balance", type + ": " + result.previousBalance() + " -> " + result.newBalance()));
 
-        if (newBalance.compareTo(BigDecimal.ZERO) == 0) {
+        // Ticket 06: a payment larger than the outstanding balance still liquidates
+        // the account — the excess is flagged as unallocated, not rejected outright.
+        if (result.hasUnallocatedAmount()) {
+            exceptionService.raiseUnallocatedPayment(account, result.unallocatedAmount(), actor);
+        }
+
+        if (account.getStatus() == MemoStatus.LIQUIDATED) {
             kafkaTemplate.send(MemoTopics.MEMO_LIQUIDATED, accountNumber,
                     new MemoLiquidatedEvent(accountNumber, now));
             auditLogger.record(new AuditEvent(

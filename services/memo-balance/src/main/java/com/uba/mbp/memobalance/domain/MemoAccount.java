@@ -128,13 +128,38 @@ public class MemoAccount {
         this.glRecoveryCode = glRecoveryCode;
     }
 
-    /** Ticket 04/05: applies a recalculated balance, moving to LIQUIDATED if it reaches zero. */
-    public void applyAdjustedBalance(BigDecimal newBalance, Instant now) {
+    /**
+     * The result of applying a payment/write-off amount: the domain rule (cap at the
+     * outstanding balance, flag any excess as unallocated) lives here, not in the
+     * service layer, so it's testable without Spring/Kafka/a database and isn't
+     * duplicated by a caller re-deriving whether liquidation just happened.
+     */
+    public record AdjustmentResult(BigDecimal previousBalance, BigDecimal newBalance, BigDecimal unallocatedAmount) {
+        public boolean hasUnallocatedAmount() {
+            return unallocatedAmount != null;
+        }
+    }
+
+    /** Ticket 04/05/06: recalculates the balance for {@code amount}, capping at zero rather than going negative. */
+    public AdjustmentResult adjust(BigDecimal amount, Instant now) {
+        BigDecimal previousBalance = this.balance;
+        BigDecimal newBalance;
+        BigDecimal unallocatedAmount = null;
+
+        if (amount.compareTo(previousBalance) > 0) {
+            unallocatedAmount = amount.subtract(previousBalance);
+            newBalance = BigDecimal.ZERO.setScale(previousBalance.scale());
+        } else {
+            newBalance = previousBalance.subtract(amount);
+        }
+
         this.balance = newBalance;
         this.updatedAt = now;
         if (newBalance.compareTo(BigDecimal.ZERO) == 0) {
             this.status = MemoStatus.LIQUIDATED;
         }
+
+        return new AdjustmentResult(previousBalance, newBalance, unallocatedAmount);
     }
 
     public UUID getId() {
