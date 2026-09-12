@@ -51,6 +51,7 @@ class MemoAccountControllerTest extends AbstractIntegrationTest {
                 accountNumber, "CUST-1", "SOL-001", "NGN", "TXN-REF-1",
                 "written off", new BigDecimal("5000.00"),
                 Instant.parse("2026-01-01T00:00:00Z"), Instant.now());
+        account.applyCountryConfig("NG", "NGN", "GL-WRITEOFF-NG", "GL-RECOVERY-NG");
         return repository.save(account);
     }
 
@@ -65,7 +66,23 @@ class MemoAccountControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.accountNumber").value(accountNumber))
                 .andExpect(jsonPath("$.status").value("IMPORTED_PENDING_REVIEW"))
                 .andExpect(jsonPath("$.balance").value(5000.00))
+                .andExpect(jsonPath("$.country").value("NG"))
+                .andExpect(jsonPath("$.glWriteOffCode").value("GL-WRITEOFF-NG"))
                 .andExpect(jsonPath("$.history").isArray());
+    }
+
+    @Test
+    void transactionServicesCanReadAMemoAccountItEdits() throws Exception {
+        // RBAC reconciliation: Transaction Services has "edit/update privileges
+        // for account data and memo balances" (CONTEXT-MAP.md) but previously had
+        // no way to read what it was editing.
+        String accountNumber = "ACC-" + System.nanoTime();
+        seedAccount(accountNumber);
+
+        mockMvc.perform(get("/memo-accounts/{accountNumber}", accountNumber)
+                        .with(withRole("TRANSACTION_SERVICES")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accountNumber").value(accountNumber));
     }
 
     @Test

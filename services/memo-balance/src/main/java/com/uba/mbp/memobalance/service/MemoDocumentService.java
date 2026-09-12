@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.util.List;
 import java.util.UUID;
 
 /** Ticket 07: upload and retrieve documents attached to a Memo account (RFP §3.11). */
@@ -71,5 +72,12 @@ public class MemoDocumentService {
                 "memo-balance", "Downloaded " + document.getFileName()));
 
         return new DownloadedDocument(document.getFileName(), document.getContentType(), content);
+    }
+
+    public List<MemoDocument> list(String accountNumber) {
+        var account = memoAccountRepository.findByAccountNumber(accountNumber)
+                .orElseThrow(() -> new MemoAccountNotFoundException(accountNumber));
+
+        return memoDocumentRepository.findByMemoAccountIdOrderByUploadedAtDesc(account.getId());
     }
 }

@@ -114,6 +114,24 @@ class MemoAdjustmentControllerTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void recoveryTeamCanAlsoAdjust() throws Exception {
+        // RBAC reconciliation: Recovery Team has "full privileges for verification,
+        // liquidation tracking, and reporting" (CONTEXT-MAP.md) — adjustments are
+        // what drive liquidation, so Recovery Team must be able to trigger them.
+        String accountNumber = "ACC-" + System.nanoTime();
+        seedAccount(accountNumber, new BigDecimal("100.00"));
+
+        String body = objectMapper.writeValueAsString(
+                new AdjustmentRequest(AdjustmentType.PARTIAL_PAYMENT, new BigDecimal("50.00")));
+
+        mockMvc.perform(post("/memo-accounts/{accountNumber}/adjustments", accountNumber)
+                        .with(withRole("RECOVERY_TEAM"))
+                        .contentType("application/json")
+                        .content(body))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
     void anAdjustmentOfZeroOrNegativeAmountIsRejected() throws Exception {
         String accountNumber = "ACC-" + System.nanoTime();
         seedAccount(accountNumber, new BigDecimal("100.00"));

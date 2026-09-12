@@ -28,6 +28,7 @@ import java.util.regex.Pattern;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -101,6 +102,38 @@ class MemoDocumentControllerTest extends AbstractIntegrationTest {
 
         mockMvc.perform(multipart("/memo-accounts/{accountNumber}/documents", accountNumber)
                         .file(file)
+                        .with(withRole("CSM")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void recoveryTeamCanUploadListAndDownload() throws Exception {
+        // RBAC reconciliation: Recovery Team's "full privileges for verification"
+        // (CONTEXT-MAP.md) cover verification artifacts like non-indebtedness letters.
+        String accountNumber = "ACC-" + System.nanoTime();
+        seedAccount(accountNumber);
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "verification-record.txt", "text/plain",
+                "verified".getBytes(StandardCharsets.UTF_8));
+
+        mockMvc.perform(multipart("/memo-accounts/{accountNumber}/documents", accountNumber)
+                        .file(file)
+                        .with(withRole("RECOVERY_TEAM")))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/memo-accounts/{accountNumber}/documents", accountNumber)
+                        .with(withRole("RECOVERY_TEAM")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].fileName").value("verification-record.txt"));
+    }
+
+    @Test
+    void listingDocumentsIsForbiddenForARoleWithoutDocumentPrivilege() throws Exception {
+        String accountNumber = "ACC-" + System.nanoTime();
+        seedAccount(accountNumber);
+
+        mockMvc.perform(get("/memo-accounts/{accountNumber}/documents", accountNumber)
                         .with(withRole("CSM")))
                 .andExpect(status().isForbidden());
     }

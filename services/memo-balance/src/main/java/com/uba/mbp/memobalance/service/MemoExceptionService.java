@@ -5,11 +5,14 @@ import com.uba.mbp.audit.AuditLogger;
 import com.uba.mbp.memobalance.domain.ExceptionType;
 import com.uba.mbp.memobalance.domain.MemoAccount;
 import com.uba.mbp.memobalance.domain.MemoException;
+import com.uba.mbp.memobalance.exception.MemoAccountNotFoundException;
+import com.uba.mbp.memobalance.repository.MemoAccountRepository;
 import com.uba.mbp.memobalance.repository.MemoExceptionRepository;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.util.List;
 
 /**
  * Ticket 06: flags balance/payment exceptions for Transaction Services.
@@ -19,14 +22,27 @@ import java.time.Clock;
 @Service
 public class MemoExceptionService {
 
+    private final MemoAccountRepository memoAccountRepository;
     private final MemoExceptionRepository repository;
     private final AuditLogger auditLogger;
     private final Clock clock;
 
-    public MemoExceptionService(MemoExceptionRepository repository, AuditLogger auditLogger, Clock clock) {
+    public MemoExceptionService(
+            MemoAccountRepository memoAccountRepository,
+            MemoExceptionRepository repository,
+            AuditLogger auditLogger,
+            Clock clock) {
+        this.memoAccountRepository = memoAccountRepository;
         this.repository = repository;
         this.auditLogger = auditLogger;
         this.clock = clock;
+    }
+
+    /** Ticket 06 follow-up: exceptions were persisted but had no way to be seen — this is that surface. */
+    public List<MemoException> list(String accountNumber) {
+        var account = memoAccountRepository.findByAccountNumber(accountNumber)
+                .orElseThrow(() -> new MemoAccountNotFoundException(accountNumber));
+        return repository.findByMemoAccountId(account.getId());
     }
 
     public void raiseUnallocatedPayment(MemoAccount account, BigDecimal unallocatedAmount, String actor) {

@@ -11,7 +11,10 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Ticket 03: RBAC-scoped read access to Memo accounts. CSM has view-only
  * access; Recovery Team and Credit Admin have full privileges (RFP §3.7)
- * which, for this read endpoint, means the same access as CSM.
+ * which, for this read endpoint, means the same access as CSM. Transaction
+ * Services also reads here (RBAC reconciliation, post-launch review):
+ * "edit/update privileges for account data and memo balances" is meaningless
+ * without a way to see what's being edited.
  */
 @RestController
 @RequestMapping("/memo-accounts")
@@ -24,7 +27,7 @@ public class MemoAccountController {
     }
 
     @GetMapping("/{accountNumber}")
-    @PreAuthorize("hasAnyRole('CSM', 'RECOVERY_TEAM', 'CREDIT_ADMIN')")
+    @PreAuthorize("hasAnyRole('CSM', 'RECOVERY_TEAM', 'TRANSACTION_SERVICES', 'CREDIT_ADMIN')")
     public ResponseEntity<MemoAccountResponse> getByAccountNumber(@PathVariable String accountNumber) {
         return queryService.findByAccountNumber(accountNumber)
                 .map(ResponseEntity::ok)

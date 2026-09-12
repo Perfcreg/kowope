@@ -17,7 +17,8 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Ticket 04: records a partial payment or approved write-off against a Memo
  * account. Transaction Services has edit/update privileges over memo balances;
- * Credit Admin has full privileges (RFP §3.7) — both can adjust.
+ * Credit Admin and Recovery Team have full privileges including liquidation
+ * tracking (RFP §3.7, CONTEXT-MAP.md) — all three can adjust.
  */
 @RestController
 @RequestMapping("/memo-accounts")
@@ -30,7 +31,7 @@ public class MemoAdjustmentController {
     }
 
     @PostMapping("/{accountNumber}/adjustments")
-    @PreAuthorize("hasAnyRole('TRANSACTION_SERVICES', 'CREDIT_ADMIN')")
+    @PreAuthorize("hasAnyRole('TRANSACTION_SERVICES', 'RECOVERY_TEAM', 'CREDIT_ADMIN')")
     public ResponseEntity<Void> adjust(
             @PathVariable String accountNumber,
             @RequestBody AdjustmentRequest request,

@@ -20,17 +20,22 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 /**
  * Ticket 07: upload and retrieve documents attached to a Memo account (RFP §3.11).
- * Restricted to Credit Admin, matching the ticket's own scope — broaden to other
- * roles only when a spec actually asks for it.
+ * Credit Admin and Recovery Team both have "full privileges for verification"
+ * (CONTEXT-MAP.md) — non-indebtedness letters and verification records (RFP §3.11)
+ * are verification artifacts, so both roles get access; narrower than that isn't
+ * asked for by any spec.
  */
 @RestController
 @RequestMapping("/memo-accounts")
 public class MemoDocumentController {
+
+    private static final String DOCUMENT_ROLES = "hasAnyRole('RECOVERY_TEAM', 'CREDIT_ADMIN')";
 
     private final MemoDocumentService documentService;
 
@@ -39,7 +44,7 @@ public class MemoDocumentController {
     }
 
     @PostMapping("/{accountNumber}/documents")
-    @PreAuthorize("hasRole('CREDIT_ADMIN')")
+    @PreAuthorize(DOCUMENT_ROLES)
     public ResponseEntity<Map<String, UUID>> upload(
             @PathVariable String accountNumber,
             @RequestParam("file") MultipartFile file,
@@ -54,8 +59,17 @@ public class MemoDocumentController {
         }
     }
 
+    @GetMapping("/{accountNumber}/documents")
+    @PreAuthorize(DOCUMENT_ROLES)
+    public ResponseEntity<List<MemoDocumentSummary>> list(@PathVariable String accountNumber) {
+        List<MemoDocumentSummary> documents = documentService.list(accountNumber).stream()
+                .map(MemoDocumentSummary::from)
+                .toList();
+        return ResponseEntity.ok(documents);
+    }
+
     @GetMapping("/{accountNumber}/documents/{documentId}")
-    @PreAuthorize("hasRole('CREDIT_ADMIN')")
+    @PreAuthorize(DOCUMENT_ROLES)
     public ResponseEntity<byte[]> download(
             @PathVariable String accountNumber,
             @PathVariable UUID documentId,

@@ -9,7 +9,9 @@ import java.util.List;
 
 /**
  * Ticket 03: the RBAC-scoped read view of a Memo account. {@code history} is
- * empty until Tickets 04/05 introduce balance adjustments/liquidation to populate it.
+ * populated once Tickets 04/05 record balance adjustments/liquidation.
+ * {@code country}/{@code baseCurrency}/{@code glWriteOffCode}/{@code glRecoveryCode}
+ * (Ticket 08) are null until a CountryConfigLookup has resolved them.
  */
 public record MemoAccountResponse(
         String accountNumber,
@@ -22,6 +24,10 @@ public record MemoAccountResponse(
         Instant transferDate,
         Instant createdAt,
         Instant updatedAt,
+        String country,
+        String baseCurrency,
+        String glWriteOffCode,
+        String glRecoveryCode,
         List<MemoHistoryEntry> history) {
 
     public static MemoAccountResponse from(MemoAccount account, List<MemoHistoryEntry> history) {
@@ -36,6 +42,10 @@ public record MemoAccountResponse(
                 account.getTransferDate(),
                 account.getCreatedAt(),
                 account.getUpdatedAt(),
+                account.getCountry(),
+                account.getBaseCurrency(),
+                account.getGlWriteOffCode(),
+                account.getGlRecoveryCode(),
                 history);
     }
 }
