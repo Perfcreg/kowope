@@ -16,7 +16,8 @@ import java.util.List;
 /**
  * Integration spec User Stories 4-5: pull the authoritative balance figure
  * per account so memo-balance can reconcile against it. A plain bean, not
- * Camel code — see write-off-detection-service's WriteOffScanner for why.
+ * Camel code — independently testable without a running route, with the
+ * Camel route (VisionBalanceSyncRoute) only orchestrating calling this.
  *
  * <p>Every active account is republished every cycle, not just changed ones
  * — User Story 5 asks for "an event per account per sync... a defined

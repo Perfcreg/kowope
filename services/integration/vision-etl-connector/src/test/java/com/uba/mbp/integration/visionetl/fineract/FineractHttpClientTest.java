@@ -23,8 +23,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Deliberately NOT a {@code @SpringBootTest}: a bare Camel context avoids the
  * shared, continuously-firing background timer a full Spring Boot context
- * would bring in (see write-off-detection-service's own FineractHttpClientTest
- * for why an earlier route-level version of this test was flaky).
+ * would bring in — an earlier route-level version of this pagination test
+ * was flaky because the route's own timer raced this test's WireMock stub
+ * setup between test methods sharing one Spring context.
  */
 class FineractHttpClientTest {
 
