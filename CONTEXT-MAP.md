@@ -10,7 +10,7 @@ Source material: [docs/rfp/2025-09-uba-memo-balance-rfp.md](docs/rfp/2025-09-uba
 
 | Context | Path | Services (Gradle modules) | Destination | RFP source |
 |---|---|---|---|---|
-| `integration` | `services/integration/CONTEXT.md` | `write-off-detection-service`, `vision-etl-connector`, `icad-integration-adapter`, `excel-import-service` | Anti-corruption layer against Finacle, Vision, ICAD, and Excel | §3.2, §3.13(bis), §4.1 |
+| `integration` 🔶 | `services/integration/CONTEXT.md` | `write-off-detection-service` ✅, `vision-etl-connector` ✅, `excel-import-service` ✅, `icad-integration-adapter` | Anti-corruption layer against Finacle, Vision, ICAD, and Excel | §3.2, §3.13(bis), §4.1 |
 | `shared-platform` | `services/shared-platform/CONTEXT.md` | `authentication-service`, `notification-service` | Cross-service identity and alerting | §3.7, §4.5 |
 | `reference-data-config` | `services/reference-data-config/CONTEXT.md` | `reference-data-config` | Region/Country model, GL mappings, holiday calendar, admin config UI | §3.14 |
 | `memo-balance` ✅ | `services/memo-balance/CONTEXT.md` | `memo-balance` | Memo Ingestion & Balance Engine — detection, balance capture, adjustment, balance/payment exception handling, memo document management | §3.1, §3.10, §3.11, §3.13(bis) |
@@ -22,13 +22,13 @@ Source material: [docs/rfp/2025-09-uba-memo-balance-rfp.md](docs/rfp/2025-09-uba
 
 Cross-cutting, not a context: `libs/audit-trail-lib` — the shared audit-logging contract (`AuditEvent`/`AuditLogger`), depended on by every service module. See ADR-0005.
 
-✅ = implemented. `memo-balance` (Tickets 01–08, PR #10) is the first; its `CONTEXT.md` now exists for real, including the published/consumed event schemas other contexts should build against instead of reading its Java source.
+✅ = implemented, 🔶 = partially implemented. `memo-balance` (Tickets 01–08, PR #10) is the first; its `CONTEXT.md` now exists for real, including the published/consumed event schemas other contexts should build against instead of reading its Java source. `integration` is next, built one adapter per branch — see [services/integration/CONTEXT.md](services/integration/CONTEXT.md).
 
 ## Relationships
 
 Event flows between contexts, established as each gets built (per ADR-0001 — Kafka, not direct calls):
 
-- **`integration` → `memo-balance`**: publishes `MemoDetected` (a write-off narration match) and `VisionBalanceSynced` (a balance reconciliation point). Both are currently defined by `memo-balance` itself, as the target shape — `integration` doesn't exist yet. See [services/memo-balance/CONTEXT.md](services/memo-balance/CONTEXT.md#consumed-events).
+- **`integration` → `memo-balance`**: publishes `MemoDetected` (a write-off narration match, from either the Write-Off Detection Service or the Excel Import Service) and `VisionBalanceSynced` (a balance reconciliation point, from the Vision ETL Connector). `memo-balance`'s copy of each event's shape is authoritative — see [services/memo-balance/CONTEXT.md](services/memo-balance/CONTEXT.md#consumed-events).
 - **`memo-balance` → `account-verification`**: publishes `MemoLiquidated` when a balance reaches exactly zero; `account-verification` consumes it to drive the Owing → Paid-Off transition (ADR-0006).
 - **`memo-balance` → `clearance-orchestration`**: the same `MemoLiquidated` event starts the ICAD clearance workflow.
 - **`memo-balance` → `reporting`**: publishes `MemoBalanceAdjusted` on every balance change, for period-movement computation without recomputing from raw transactions.
@@ -55,6 +55,8 @@ Terms genuinely used across every context. Transcribed directly from the RFP (no
 
 **Memo account**: an account flagged because a Finacle transaction narration matched the phrase "written off" (case-insensitive, configurable variants), tracked in the Memo database with its balance, transfer date, and metadata (RFP §3.13(bis)).
 
+**Finacle substitute / Vision substitute**: this project has no access to real Finacle or Vision, so `integration`'s adapters point at an already-running Apache Fineract instance (from the unrelated `mfb-stack` project) instead — see [services/integration/CONTEXT.md](services/integration/CONTEXT.md) and ADR-0012/0013.
+
 ## Architect's deltas from the proposed diagram
 
 The diagram groups things slightly differently than the contexts above. See the full reasoning in [docs/architecture/mbp-component-diagram.md](docs/architecture/mbp-component-diagram.md#architects-deltas-from-this-diagram):
@@ -78,5 +80,8 @@ The diagram groups things slightly differently than the contexts above. See the 
 | [0008](docs/adr/0008-local-first-development-environment.md) | `docker-compose` inner loop, Docker Desktop Kubernetes for integration testing; production target deferred to the org |
 | [0009](docs/adr/0009-testing-stack.md) | JUnit 5 + Mockito + Testcontainers |
 | [0010](docs/adr/0010-web-channel-stack.md) | Vite + React + TypeScript SPA for `channels`; mobile deferred |
+| [0011](docs/adr/0011-apache-camel-for-integration-context.md) | Apache Camel is the integration framework for every `integration` adapter |
+| [0012](docs/adr/0012-fineract-as-finacle-substitute.md) | Apache Fineract substitutes for Finacle in local/dev |
+| [0013](docs/adr/0013-fineract-as-vision-substitute.md) | Apache Fineract also substitutes for Vision — same instance, independent adapter |
 
 **Still open**: production deployment target (ADR-0008), mobile channel approach (ADR-0010).
