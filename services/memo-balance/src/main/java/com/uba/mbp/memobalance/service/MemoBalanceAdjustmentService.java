@@ -6,6 +6,7 @@ import com.uba.mbp.memobalance.domain.AdjustmentType;
 import com.uba.mbp.memobalance.domain.BalanceAdjustment;
 import com.uba.mbp.memobalance.domain.MemoAccount;
 import com.uba.mbp.memobalance.event.MemoBalanceAdjustedEvent;
+import com.uba.mbp.memobalance.event.MemoLiquidatedEvent;
 import com.uba.mbp.memobalance.exception.InvalidAdjustmentException;
 import com.uba.mbp.memobalance.exception.MemoAccountNotFoundException;
 import com.uba.mbp.memobalance.messaging.MemoTopics;
@@ -77,6 +78,14 @@ public class MemoBalanceAdjustmentService {
         auditLogger.record(new AuditEvent(
                 now, "system", "MEMO_BALANCE_ADJUSTED", "MemoAccount", accountNumber,
                 "memo-balance", type + ": " + previousBalance + " -> " + newBalance));
+
+        if (newBalance.compareTo(BigDecimal.ZERO) == 0) {
+            kafkaTemplate.send(MemoTopics.MEMO_LIQUIDATED, accountNumber,
+                    new MemoLiquidatedEvent(accountNumber, now));
+            auditLogger.record(new AuditEvent(
+                    now, "system", "MEMO_LIQUIDATED", "MemoAccount", accountNumber,
+                    "memo-balance", "Balance reached zero"));
+        }
 
         return account;
     }
