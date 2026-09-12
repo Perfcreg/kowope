@@ -10,7 +10,7 @@ Source material: [docs/rfp/2025-09-uba-memo-balance-rfp.md](docs/rfp/2025-09-uba
 
 | Context | Path | Services (Gradle modules) | Destination | RFP source |
 |---|---|---|---|---|
-| `integration` 🔶 | `services/integration/CONTEXT.md` | `write-off-detection-service` ✅, `vision-etl-connector` ✅, `excel-import-service` ✅, `icad-integration-adapter` | Anti-corruption layer against Finacle, Vision, ICAD, and Excel | §3.2, §3.13(bis), §4.1 |
+| `integration` ✅ | `services/integration/CONTEXT.md` | `write-off-detection-service` ✅, `vision-etl-connector` ✅, `excel-import-service` ✅, `icad-integration-adapter` ✅ | Anti-corruption layer against Finacle, Vision, ICAD, and Excel | §3.2, §3.13(bis), §4.1 |
 | `shared-platform` | `services/shared-platform/CONTEXT.md` | `authentication-service`, `notification-service` | Cross-service identity and alerting | §3.7, §4.5 |
 | `reference-data-config` | `services/reference-data-config/CONTEXT.md` | `reference-data-config` | Region/Country model, GL mappings, holiday calendar, admin config UI | §3.14 |
 | `memo-balance` ✅ | `services/memo-balance/CONTEXT.md` | `memo-balance` | Memo Ingestion & Balance Engine — detection, balance capture, adjustment, balance/payment exception handling, memo document management | §3.1, §3.10, §3.11, §3.13(bis) |
@@ -22,7 +22,7 @@ Source material: [docs/rfp/2025-09-uba-memo-balance-rfp.md](docs/rfp/2025-09-uba
 
 Cross-cutting, not a context: `libs/audit-trail-lib` — the shared audit-logging contract (`AuditEvent`/`AuditLogger`), depended on by every service module. See ADR-0005.
 
-✅ = implemented, 🔶 = partially implemented. `memo-balance` (Tickets 01–08, PR #10) is fully implemented; `integration` has three adapters so far (write-off-detection-service, vision-etl-connector, and excel-import-service, the first two using Apache Camel — ADR-0011 — against a Fineract stand-in for Finacle and Vision respectively — ADR-0012/ADR-0013; excel-import-service adds real `.xlsx` parsing on the same Camel foundation). Each implemented context's `CONTEXT.md` exists for real, including published/consumed event schemas other contexts should build against instead of reading its Java source.
+✅ = implemented, 🔶 = partially implemented. `memo-balance` (Tickets 01–08, PR #10) and `integration` (all four adapters: write-off-detection-service, vision-etl-connector, excel-import-service, icad-integration-adapter) are both fully implemented. The first three `integration` adapters use Apache Camel — ADR-0011 — against a Fineract stand-in for Finacle and Vision respectively (ADR-0012/ADR-0013); icad-integration-adapter has a materially weaker verification story since no real ICAD sandbox exists (ADR-0014) — see [services/integration/CONTEXT.md](services/integration/CONTEXT.md). Each implemented context's `CONTEXT.md` exists for real, including published/consumed event schemas other contexts should build against instead of reading its Java source.
 
 ## Relationships
 
@@ -30,7 +30,7 @@ Event flows between contexts, established as each gets built (per ADR-0001 — K
 
 - **`integration` → `memo-balance`**: publishes `MemoDetected` (a write-off narration match, from either the Write-Off Detection Service or the Excel Import Service) and `VisionBalanceSynced` (a balance reconciliation point, from the Vision ETL Connector). `memo-balance`'s copy of each event's shape is authoritative — see [services/memo-balance/CONTEXT.md](services/memo-balance/CONTEXT.md#consumed-events).
 - **`memo-balance` → `account-verification`**: publishes `MemoLiquidated` when a balance reaches exactly zero; `account-verification` consumes it to drive the Owing → Paid-Off transition (ADR-0006).
-- **`memo-balance` → `clearance-orchestration`**: the same `MemoLiquidated` event starts the ICAD clearance workflow.
+- **`memo-balance` → `clearance-orchestration`**: the same `MemoLiquidated` event starts the ICAD clearance workflow; `clearance-orchestration` calls `integration`'s ICAD Integration Adapter (a synchronous REST capability, not an event) to actually push the clearance, and later consumes its `IcadClearanceOutcome` event (provisional — see ADR-0014) to close out the SLA.
 - **`memo-balance` → `reporting`**: publishes `MemoBalanceAdjusted` on every balance change, for period-movement computation without recomputing from raw transactions.
 
 See [services/memo-balance/CONTEXT.md](services/memo-balance/CONTEXT.md#published-events) for the full field-level schemas.
@@ -55,7 +55,7 @@ Terms genuinely used across every context. Transcribed directly from the RFP (no
 
 **Memo account**: an account flagged because a Finacle transaction narration matched the phrase "written off" (case-insensitive, configurable variants), tracked in the Memo database with its balance, transfer date, and metadata (RFP §3.13(bis)).
 
-**Finacle substitute / Vision substitute**: this project has no access to real Finacle or Vision, so `integration`'s adapters point at an already-running Apache Fineract instance (from the unrelated `mfb-stack` project) instead — see [services/integration/CONTEXT.md](services/integration/CONTEXT.md) and ADR-0012/0013.
+**Finacle substitute / Vision substitute**: this project has no access to real Finacle or Vision, so `integration`'s adapters point at an already-running Apache Fineract instance (from the unrelated `mfb-stack` project) instead — see [services/integration/CONTEXT.md](services/integration/CONTEXT.md) and ADR-0012/0013. ICAD has no equivalent substitute (ADR-0014) — that adapter is verified against WireMock only.
 
 ## Architect's deltas from the proposed diagram
 
@@ -83,6 +83,8 @@ The diagram groups things slightly differently than the contexts above. See the 
 | [0011](docs/adr/0011-apache-camel-for-integration-context.md) | Apache Camel is the integration framework for every `integration` adapter |
 | [0012](docs/adr/0012-fineract-as-finacle-substitute.md) | Apache Fineract substitutes for Finacle in local/dev — the detection algorithm stays Finacle-faithful, only the REST client is Fineract-specific |
 | [0013](docs/adr/0013-fineract-as-vision-substitute.md) | Apache Fineract also substitutes for Vision — same instance, independent adapter |
+| [0014](docs/adr/0014-icad-modeled-contract-no-real-substitute.md) | ICAD Integration Adapter models a push/fetch contract with no real substitute — WireMock-only verification |
+| [0015](docs/adr/0015-pending-clearance-state-is-in-memory-only.md) | ICAD pending-clearance state is in-memory only — accepted, flagged restart risk |
 | [0016](docs/adr/0016-write-off-detection-dedup-state-is-in-memory-only.md) | Write-off detection dedup state is in-memory only — accepted, flagged restart risk |
 
 **Still open**: production deployment target (ADR-0008), mobile channel approach (ADR-0010).

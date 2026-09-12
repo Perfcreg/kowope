@@ -1,5 +1,34 @@
 spring:
   application:
     name: icad-integration-adapter
+
 server:
-  port: 8083
+  # 8081-8084 are taken by the other three integration adapters on their own
+  # unmerged branches (write-off-detection-service, vision-etl-connector,
+  # excel-import-service); 8084 is unassigned pending merge order, not a gap.
+  port: 8085
+
+# ADR-0014: no real NIBSS ICAD sandbox is reachable from this project — every
+# environment this points at (including local dev) is a WireMock stub of the
+# pushAccount/fetchAccount contract modeled in IcadClient.
+icad:
+  base-url: http://localhost:9999
+  api-key: dev-only-placeholder
+  poll:
+    interval-ms: 30000
+
+# ADR pending shared-platform: dev-only symmetric secret, same interim seam as
+# memo-balance's SecurityConfig.
+security:
+  jwt:
+    dev-secret: "dev-only-secret-replace-once-shared-platform-issues-real-tokens"
+
+kafka:
+  bootstrap-servers: localhost:9092
+
+icad-clearance-outcome:
+  topic: mbp.integration.icad-clearance-outcome
+
+camel:
+  springboot:
+    main-run-controller: true
