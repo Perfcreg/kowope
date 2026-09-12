@@ -19,7 +19,10 @@ public class MemoDetectedListener {
         this.ingestionService = ingestionService;
     }
 
-    @KafkaListener(topics = MemoTopics.MEMO_DETECTED, groupId = "memo-balance")
+    @KafkaListener(
+            topics = MemoTopics.MEMO_DETECTED,
+            groupId = "memo-balance",
+            containerFactory = "memoDetectedContainerFactory")
     public void onMemoDetected(MemoDetectedEvent event) {
         try {
             ingestionService.ingest(event);

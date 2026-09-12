@@ -1,6 +1,7 @@
 package com.uba.mbp.memobalance.config;
 
 import com.uba.mbp.memobalance.event.MemoDetectedEvent;
+import com.uba.mbp.memobalance.event.VisionBalanceSyncedEvent;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
@@ -62,11 +63,34 @@ public class KafkaConfig {
     }
 
     @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, MemoDetectedEvent> kafkaListenerContainerFactory(
+    public ConcurrentKafkaListenerContainerFactory<String, MemoDetectedEvent> memoDetectedContainerFactory(
             ConsumerFactory<String, MemoDetectedEvent> memoDetectedConsumerFactory) {
         ConcurrentKafkaListenerContainerFactory<String, MemoDetectedEvent> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(memoDetectedConsumerFactory);
+        return factory;
+    }
+
+    @Bean
+    public ConsumerFactory<String, VisionBalanceSyncedEvent> visionBalanceSyncedConsumerFactory() {
+        Map<String, Object> props = new HashMap<>();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, "memo-balance");
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JacksonJsonDeserializer.class);
+        props.put(JacksonJsonDeserializer.TRUSTED_PACKAGES, "com.uba.mbp.memobalance.event");
+        props.put(JacksonJsonDeserializer.VALUE_DEFAULT_TYPE, VisionBalanceSyncedEvent.class.getName());
+        props.put(JacksonJsonDeserializer.USE_TYPE_INFO_HEADERS, false);
+        return new DefaultKafkaConsumerFactory<>(props);
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, VisionBalanceSyncedEvent> visionBalanceSyncedContainerFactory(
+            ConsumerFactory<String, VisionBalanceSyncedEvent> visionBalanceSyncedConsumerFactory) {
+        ConcurrentKafkaListenerContainerFactory<String, VisionBalanceSyncedEvent> factory =
+                new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(visionBalanceSyncedConsumerFactory);
         return factory;
     }
 }

@@ -22,15 +22,16 @@ import java.time.Clock;
 /**
  * Ticket 04: recalculates a Memo account's balance for a partial payment or an
  * approved write-off, records the adjustment, and publishes {@link MemoBalanceAdjustedEvent}.
- * Delegating to Vision's own balance algorithm (RFP §3.1) and reconciling any
- * discrepancy is ticket 06's job once the integration context exists — this
- * service does the arithmetic itself for now.
+ * Delegating to Vision's own balance algorithm (RFP §3.1) is still deferred —
+ * this service does the arithmetic itself — but reconciling a Vision discrepancy
+ * and flagging an unallocated payment (ticket 06) both live here now.
  */
 @Service
 public class MemoBalanceAdjustmentService {
 
     private final MemoAccountRepository memoAccountRepository;
     private final BalanceAdjustmentRepository balanceAdjustmentRepository;
+    private final MemoExceptionService exceptionService;
     private final AuditLogger auditLogger;
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final Clock clock;
@@ -38,11 +39,13 @@ public class MemoBalanceAdjustmentService {
     public MemoBalanceAdjustmentService(
             MemoAccountRepository memoAccountRepository,
             BalanceAdjustmentRepository balanceAdjustmentRepository,
+            MemoExceptionService exceptionService,
             AuditLogger auditLogger,
             KafkaTemplate<String, Object> kafkaTemplate,
             Clock clock) {
         this.memoAccountRepository = memoAccountRepository;
         this.balanceAdjustmentRepository = balanceAdjustmentRepository;
+        this.exceptionService = exceptionService;
         this.auditLogger = auditLogger;
         this.kafkaTemplate = kafkaTemplate;
         this.clock = clock;
@@ -58,12 +61,18 @@ public class MemoBalanceAdjustmentService {
                 .orElseThrow(() -> new MemoAccountNotFoundException(accountNumber));
 
         BigDecimal previousBalance = account.getBalance();
+
+        // Ticket 06: a payment larger than the outstanding balance still liquidates
+        // the account — the excess is flagged as unallocated, not rejected outright.
+        BigDecimal newBalance;
         if (amount.compareTo(previousBalance) > 0) {
-            throw new InvalidAdjustmentException(
-                    "Adjustment amount " + amount + " exceeds current balance " + previousBalance);
+            BigDecimal unallocated = amount.subtract(previousBalance);
+            newBalance = BigDecimal.ZERO.setScale(previousBalance.scale());
+            exceptionService.raiseUnallocatedPayment(account, unallocated);
+        } else {
+            newBalance = previousBalance.subtract(amount);
         }
 
-        BigDecimal newBalance = previousBalance.subtract(amount);
         var now = clock.instant();
 
         account.applyAdjustedBalance(newBalance, now);

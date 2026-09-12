@@ -114,12 +114,12 @@ class MemoAdjustmentControllerTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void anAdjustmentExceedingTheBalanceIsRejected() throws Exception {
+    void anAdjustmentOfZeroOrNegativeAmountIsRejected() throws Exception {
         String accountNumber = "ACC-" + System.nanoTime();
         seedAccount(accountNumber, new BigDecimal("100.00"));
 
         String body = objectMapper.writeValueAsString(
-                new AdjustmentRequest(AdjustmentType.PARTIAL_PAYMENT, new BigDecimal("500.00")));
+                new AdjustmentRequest(AdjustmentType.PARTIAL_PAYMENT, new BigDecimal("0.00")));
 
         mockMvc.perform(post("/memo-accounts/{accountNumber}/adjustments", accountNumber)
                         .with(withRole("CREDIT_ADMIN"))
