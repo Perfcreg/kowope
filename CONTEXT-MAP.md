@@ -80,5 +80,6 @@ The diagram groups things slightly differently than the contexts above. See the 
 | [0010](docs/adr/0010-web-channel-stack.md) | Vite + React + TypeScript SPA for `channels`; mobile deferred |
 | [0011](docs/adr/0011-apache-camel-for-integration-context.md) | Apache Camel is the integration framework for every `integration` adapter |
 | [0012](docs/adr/0012-fineract-as-finacle-substitute.md) | Apache Fineract substitutes for Finacle in local/dev — the detection algorithm stays Finacle-faithful, only the REST client is Fineract-specific |
+| [0013](docs/adr/0013-write-off-detection-dedup-state-is-in-memory-only.md) | Write-off detection dedup state is in-memory only — accepted, flagged restart risk |
 
 **Still open**: production deployment target (ADR-0008), mobile channel approach (ADR-0010).

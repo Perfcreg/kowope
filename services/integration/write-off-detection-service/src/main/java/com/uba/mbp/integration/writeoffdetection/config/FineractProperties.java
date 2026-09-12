@@ -14,7 +14,6 @@ public class FineractProperties {
     private String tenant = "default";
     private String username = "mifos";
     private String password = "password";
-    private String writeOffPattern = "writ(?:e|ten)[- ]?off";
 
     public String getBaseUrl() {
         return baseUrl;
@@ -46,14 +45,5 @@ public class FineractProperties {
 
     public void setPassword(String password) {
         this.password = password;
-    }
-
-    /** RFP §3.13(bis): case-insensitive, with configurable variants ("written-off", "write off", ...). */
-    public String getWriteOffPattern() {
-        return writeOffPattern;
-    }
-
-    public void setWriteOffPattern(String writeOffPattern) {
-        this.writeOffPattern = writeOffPattern;
     }
 }

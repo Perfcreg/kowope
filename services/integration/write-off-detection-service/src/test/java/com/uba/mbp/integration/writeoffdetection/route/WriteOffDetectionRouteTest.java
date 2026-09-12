@@ -8,7 +8,6 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -84,10 +83,10 @@ class WriteOffDetectionRouteTest {
     }
 
     @Test
-    void aWrittenOffNarrationInFineractProducesAMemoDetectedMessageOnKafka() {
+    void aWrittenOffNarrationInFineractProducesAMemoDetectedMessageWithTheAccountBalanceNotTheTransactionAmount() {
         wireMock.stubFor(get(urlPathEqualTo("/fineract-provider/api/v1/clients"))
                 .willReturn(aResponse().withHeader("Content-Type", "application/json").withBody("""
-                        {"pageItems":[{"id":4,"displayName":"Emeka Nwosu","officeName":"Lagos Island Branch"}]}
+                        {"totalFilteredRecords":1,"pageItems":[{"id":4,"displayName":"Emeka Nwosu","officeName":"Lagos Island Branch"}]}
                         """)));
 
         wireMock.stubFor(get(urlPathEqualTo("/fineract-provider/api/v1/clients/4/accounts"))
@@ -98,20 +97,26 @@ class WriteOffDetectionRouteTest {
         wireMock.stubFor(get(urlPathEqualTo("/fineract-provider/api/v1/savingsaccounts/10"))
                 .withQueryParam("associations", equalTo("transactions"))
                 .willReturn(aResponse().withHeader("Content-Type", "application/json").withBody("""
-                        {"accountNo":"000000004","currency":{"code":"NGN"},"transactions":[
+                        {"accountNo":"000000004","currency":{"code":"NGN"},
+                         "summary":{"accountBalance":6125000.00},
+                         "transactions":[
                             {"id":98,"note":"Account written off per approval","amount":15000.00,"date":[2026,1,10]}
-                        ]}
+                         ]}
                         """)));
 
         await().atMost(20, java.util.concurrent.TimeUnit.SECONDS).untilAsserted(() -> {
             var records = testConsumer.poll(Duration.ofSeconds(2));
             boolean found = false;
             for (ConsumerRecord<String, String> record : records) {
-                if ("000000004".equals(record.key()) && record.value().contains("Account written off per approval")) {
+                // The account balance (6125000.0), not the transaction amount (15000.00), must appear.
+                if ("000000004".equals(record.key())
+                        && record.value().contains("Account written off per approval")
+                        && record.value().contains("6125000")
+                        && !record.value().contains("15000.00")) {
                     found = true;
                 }
             }
-            assertTrue(found, "Expected a MemoDetected message for account 000000004");
+            assertTrue(found, "Expected a MemoDetected message carrying the account balance, not the transaction amount");
         });
     }
 }

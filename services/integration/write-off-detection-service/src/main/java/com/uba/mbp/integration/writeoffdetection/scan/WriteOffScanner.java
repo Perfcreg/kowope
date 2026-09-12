@@ -2,15 +2,16 @@ package com.uba.mbp.integration.writeoffdetection.scan;
 
 import com.uba.mbp.audit.AuditEvent;
 import com.uba.mbp.audit.AuditLogger;
-import com.uba.mbp.integration.writeoffdetection.config.FineractProperties;
+import com.uba.mbp.integration.writeoffdetection.config.WriteOffDetectionProperties;
 import com.uba.mbp.integration.writeoffdetection.event.MemoDetectedEvent;
 import com.uba.mbp.integration.writeoffdetection.fineract.FineractClient;
 import com.uba.mbp.integration.writeoffdetection.fineract.FineractClientSummary;
 import com.uba.mbp.integration.writeoffdetection.fineract.FineractSavingsAccount;
+import com.uba.mbp.integration.writeoffdetection.fineract.FineractSavingsTransaction;
+import com.uba.mbp.integration.writeoffdetection.notification.NotificationClient;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
-import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,28 +22,36 @@ import java.util.regex.Pattern;
  * transactions for a narration matching the write-off phrase. Deliberately a
  * plain bean, not Camel code, so it's testable without a running route —
  * the Camel route (WriteOffDetectionRoute) only orchestrates calling this.
+ *
+ * <p>Fineract-generic per ADR-0012: this class matches on narration text and
+ * publishes an account's real balance, both concepts a real Finacle
+ * integration would also have — nothing here depends on a Fineract-specific
+ * concept. Only {@link FineractClient}'s implementation is Fineract-shaped.
  */
 @Component
 public class WriteOffScanner {
 
     private static final String SOURCE = "write-off-detection-service";
-    private static final String COUNTRY = "NG";
 
     private final FineractClient fineractClient;
-    private final FineractProperties properties;
+    private final DetectedWriteOffStore detectedStore;
     private final AuditLogger auditLogger;
+    private final NotificationClient notificationClient;
     private final Clock clock;
+    private final Pattern writeOffPattern;
 
     public WriteOffScanner(
-            FineractClient fineractClient, FineractProperties properties, AuditLogger auditLogger, Clock clock) {
+            FineractClient fineractClient, WriteOffDetectionProperties properties, DetectedWriteOffStore detectedStore,
+            AuditLogger auditLogger, NotificationClient notificationClient, Clock clock) {
         this.fineractClient = fineractClient;
-        this.properties = properties;
+        this.detectedStore = detectedStore;
         this.auditLogger = auditLogger;
+        this.notificationClient = notificationClient;
         this.clock = clock;
+        this.writeOffPattern = Pattern.compile(properties.getPattern(), Pattern.CASE_INSENSITIVE);
     }
 
     public List<MemoDetectedEvent> scan() {
-        Pattern writeOffPattern = Pattern.compile(properties.getWriteOffPattern(), Pattern.CASE_INSENSITIVE);
         List<MemoDetectedEvent> detected = new ArrayList<>();
 
         for (FineractClientSummary client : fineractClient.listActiveClients()) {
@@ -50,19 +59,37 @@ public class WriteOffScanner {
                 FineractSavingsAccount account = fineractClient.getSavingsAccountWithTransactions(savingsAccountId);
                 account.transactions().stream()
                         .filter(tx -> tx.note() != null && writeOffPattern.matcher(tx.note()).find())
+                        .filter(tx -> !detectedStore.alreadyDetected(savingsAccountId, tx.id()))
                         .forEach(tx -> {
+                            if (tx.date() == null) {
+                                // Never fabricate a transfer date (RFP §3.13(bis) requires the real
+                                // one) — surface the gap instead of silently guessing "now".
+                                notificationClient.alertOperations(
+                                        "write-off-detection-service found a write-off with no transfer date",
+                                        "savingsAccountId=" + savingsAccountId + " transactionId=" + tx.id());
+                                return;
+                            }
                             MemoDetectedEvent event = new MemoDetectedEvent(
                                     account.accountNo(),
                                     String.valueOf(client.id()),
+                                    // Fineract's closest concept to Finacle's Branch/SOL is the
+                                    // customer's office — a name ("Abuja Branch"), not a numeric
+                                    // SOL code, since that's the only real Fineract field available.
                                     client.officeName(),
                                     account.currencyCode(),
-                                    "FINERACT-TXN-" + tx.id(),
+                                    String.valueOf(tx.id()),
                                     tx.note(),
-                                    tx.amount(),
-                                    tx.date() == null ? clock.instant() : tx.date().atStartOfDay(ZoneOffset.UTC).toInstant(),
+                                    account.accountBalance(),
+                                    tx.date().atStartOfDay(ZoneOffset.UTC).toInstant(),
                                     SOURCE,
-                                    COUNTRY);
+                                    // Country is deliberately null, not guessed: reference-data-config
+                                    // (RFP §3.14) owns Country resolution, not this adapter — a wrong
+                                    // guess (e.g. always "NG") would be worse than an honest gap for a
+                                    // pan-African bank. memo-balance's consumed-event contract already
+                                    // treats country as nullable.
+                                    null);
                             detected.add(event);
+                            detectedStore.markDetected(savingsAccountId, tx.id());
                             audit(event);
                         });
             }
@@ -74,6 +101,7 @@ public class WriteOffScanner {
     private void audit(MemoDetectedEvent event) {
         auditLogger.record(new AuditEvent(
                 clock.instant(), "system", "WRITE_OFF_DETECTED", "MemoDetectedEvent",
-                event.accountNumber(), SOURCE, "narration=\"" + event.narration() + "\""));
+                event.accountNumber(), SOURCE,
+                "postingReference=" + event.postingReference() + " matchedWriteOffPattern=true"));
     }
 }
