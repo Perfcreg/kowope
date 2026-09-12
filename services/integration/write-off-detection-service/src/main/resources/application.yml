@@ -1,5 +1,33 @@
 spring:
   application:
     name: write-off-detection-service
-server:
-  port: 8081
+
+# No server.port: this adapter has no REST endpoint (no spring-boot-starter-web
+# on the classpath), so no web server starts.
+
+# ADR-0012: mfb-stack's own committed dev-only Fineract credentials, not a
+# secret this project introduces. Real Finacle would replace this block.
+fineract:
+  base-url: http://localhost:8444
+  tenant: default
+  username: mifos
+  password: password
+  client-page-size: 200
+
+# RFP §3.13(bis) detection rule — separate from the fineract.* connection
+# block since the two change for different reasons.
+write-off:
+  detection:
+    pattern: "writ(?:e|ten)[- ]?off"
+  scan:
+    interval-ms: 30000
+
+kafka:
+  bootstrap-servers: localhost:9092
+
+memo-detected:
+  topic: mbp.integration.memo-detected
+
+camel:
+  springboot:
+    main-run-controller: true
