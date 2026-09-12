@@ -1,4 +1,4 @@
-# ADR-0013: write-off detection dedup state is in-memory only — an accepted, flagged risk
+# ADR-0016: write-off detection dedup state is in-memory only — an accepted, flagged risk
 
 ## Status
 
