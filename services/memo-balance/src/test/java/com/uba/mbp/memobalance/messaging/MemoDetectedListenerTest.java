@@ -44,7 +44,7 @@ class MemoDetectedListenerTest extends AbstractIntegrationTest {
                 "written off per approval",
                 new BigDecimal("15000.00"),
                 Instant.parse("2026-01-10T09:00:00Z"),
-                "write-off-detection-service");
+                "write-off-detection-service", "NG");
 
         kafkaTemplate.send(MemoTopics.MEMO_DETECTED, accountNumber, event);
 
@@ -59,6 +59,10 @@ class MemoDetectedListenerTest extends AbstractIntegrationTest {
             assertEquals("written off per approval", saved.get().getNarration());
             assertEquals(0, new BigDecimal("15000.00").compareTo(saved.get().getBalance()));
             assertEquals(Instant.parse("2026-01-10T09:00:00Z"), saved.get().getTransferDate());
+            assertEquals("NG", saved.get().getCountry());
+            assertEquals("NGN", saved.get().getBaseCurrency());
+            assertEquals("GL-WRITEOFF-NG", saved.get().getGlWriteOffCode());
+            assertEquals("GL-RECOVERY-NG", saved.get().getGlRecoveryCode());
         });
     }
 
@@ -74,7 +78,7 @@ class MemoDetectedListenerTest extends AbstractIntegrationTest {
                 "written off",
                 new BigDecimal("100.00"),
                 Instant.parse("2026-01-10T09:00:00Z"),
-                "write-off-detection-service");
+                "write-off-detection-service", "NG");
 
         kafkaTemplate.send(MemoTopics.MEMO_DETECTED, accountNumber, invalidEvent);
 
@@ -92,7 +96,7 @@ class MemoDetectedListenerTest extends AbstractIntegrationTest {
         MemoDetectedEvent firstDetection = new MemoDetectedEvent(
                 accountNumber, "CUST-1", "SOL-001", "NGN", "TXN-REF-1",
                 "written off", new BigDecimal("15000.00"), earlierTransferDate,
-                "write-off-detection-service");
+                "write-off-detection-service", "NG");
         kafkaTemplate.send(MemoTopics.MEMO_DETECTED, accountNumber, firstDetection);
 
         await().atMost(15, SECONDS)
@@ -101,7 +105,7 @@ class MemoDetectedListenerTest extends AbstractIntegrationTest {
         MemoDetectedEvent repeatDetection = new MemoDetectedEvent(
                 accountNumber, "CUST-1", "SOL-001", "NGN", "TXN-REF-2",
                 "written off (re-scan)", new BigDecimal("12000.00"), laterTransferDate,
-                "write-off-detection-service");
+                "write-off-detection-service", "NG");
         kafkaTemplate.send(MemoTopics.MEMO_DETECTED, accountNumber, repeatDetection);
 
         await().atMost(15, SECONDS).untilAsserted(() -> {

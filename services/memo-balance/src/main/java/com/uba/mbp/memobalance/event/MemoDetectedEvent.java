@@ -17,5 +17,6 @@ public record MemoDetectedEvent(
         String narration,
         BigDecimal balance,
         Instant transferDate,
-        String source) {
+        String source,
+        String country) {
 }

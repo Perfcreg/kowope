@@ -48,6 +48,20 @@ public class MemoAccount {
     @Column(name = "transfer_date", nullable = false)
     private Instant transferDate;
 
+    // Ticket 08: nullable because reference-data-config doesn't exist yet — a
+    // record can be ingested before its Country's GL mapping can be resolved.
+    @Column
+    private String country;
+
+    @Column(name = "base_currency")
+    private String baseCurrency;
+
+    @Column(name = "gl_write_off_code")
+    private String glWriteOffCode;
+
+    @Column(name = "gl_recovery_code")
+    private String glRecoveryCode;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private MemoStatus status;
@@ -106,6 +120,14 @@ public class MemoAccount {
         this.updatedAt = now;
     }
 
+    /** Ticket 08: applies the Country-scoped GL mapping resolved at detection/update time. */
+    public void applyCountryConfig(String country, String baseCurrency, String glWriteOffCode, String glRecoveryCode) {
+        this.country = country;
+        this.baseCurrency = baseCurrency;
+        this.glWriteOffCode = glWriteOffCode;
+        this.glRecoveryCode = glRecoveryCode;
+    }
+
     /** Ticket 04/05: applies a recalculated balance, moving to LIQUIDATED if it reaches zero. */
     public void applyAdjustedBalance(BigDecimal newBalance, Instant now) {
         this.balance = newBalance;
@@ -141,6 +163,22 @@ public class MemoAccount {
 
     public String getNarration() {
         return narration;
+    }
+
+    public String getCountry() {
+        return country;
+    }
+
+    public String getBaseCurrency() {
+        return baseCurrency;
+    }
+
+    public String getGlWriteOffCode() {
+        return glWriteOffCode;
+    }
+
+    public String getGlRecoveryCode() {
+        return glRecoveryCode;
     }
 
     public BigDecimal getBalance() {

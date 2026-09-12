@@ -5,6 +5,8 @@ import com.uba.mbp.audit.AuditLogger;
 import com.uba.mbp.memobalance.domain.MemoAccount;
 import com.uba.mbp.memobalance.event.MemoDetectedEvent;
 import com.uba.mbp.memobalance.exception.InvalidMemoDetectedEventException;
+import com.uba.mbp.memobalance.referencedata.CountryConfig;
+import com.uba.mbp.memobalance.referencedata.CountryConfigLookup;
 import com.uba.mbp.memobalance.repository.MemoAccountRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,11 +23,17 @@ import java.time.Instant;
 public class MemoIngestionService {
 
     private final MemoAccountRepository repository;
+    private final CountryConfigLookup countryConfigLookup;
     private final AuditLogger auditLogger;
     private final Clock clock;
 
-    public MemoIngestionService(MemoAccountRepository repository, AuditLogger auditLogger, Clock clock) {
+    public MemoIngestionService(
+            MemoAccountRepository repository,
+            CountryConfigLookup countryConfigLookup,
+            AuditLogger auditLogger,
+            Clock clock) {
         this.repository = repository;
+        this.countryConfigLookup = countryConfigLookup;
         this.auditLogger = auditLogger;
         this.clock = clock;
     }
@@ -34,6 +42,7 @@ public class MemoIngestionService {
     public MemoAccount ingest(MemoDetectedEvent event) {
         validate(event);
         Instant now = clock.instant();
+        CountryConfig countryConfig = countryConfigLookup.lookup(event.country());
 
         return repository.findByAccountNumber(event.accountNumber())
                 .map(existing -> {
@@ -43,6 +52,7 @@ public class MemoIngestionService {
                             event.balance(),
                             event.transferDate(),
                             now);
+                    applyCountryConfig(existing, event.country(), countryConfig);
                     MemoAccount saved = repository.save(existing);
                     audit("MEMO_DETECTED_UPDATED", event, saved);
                     return saved;
@@ -58,10 +68,15 @@ public class MemoIngestionService {
                             event.balance(),
                             event.transferDate(),
                             now);
+                    applyCountryConfig(created, event.country(), countryConfig);
                     MemoAccount saved = repository.save(created);
                     audit("MEMO_DETECTED_CREATED", event, saved);
                     return saved;
                 });
+    }
+
+    private void applyCountryConfig(MemoAccount account, String country, CountryConfig config) {
+        account.applyCountryConfig(country, config.baseCurrency(), config.glWriteOffCode(), config.glRecoveryCode());
     }
 
     private void validate(MemoDetectedEvent event) {
