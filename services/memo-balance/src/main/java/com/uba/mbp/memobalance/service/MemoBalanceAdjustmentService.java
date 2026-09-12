@@ -52,7 +52,7 @@ public class MemoBalanceAdjustmentService {
     }
 
     @Transactional
-    public MemoAccount adjust(String accountNumber, AdjustmentType type, BigDecimal amount) {
+    public MemoAccount adjust(String accountNumber, AdjustmentType type, BigDecimal amount, String actor) {
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new InvalidAdjustmentException("Adjustment amount must be positive: " + amount);
         }
@@ -68,7 +68,7 @@ public class MemoBalanceAdjustmentService {
         if (amount.compareTo(previousBalance) > 0) {
             BigDecimal unallocated = amount.subtract(previousBalance);
             newBalance = BigDecimal.ZERO.setScale(previousBalance.scale());
-            exceptionService.raiseUnallocatedPayment(account, unallocated);
+            exceptionService.raiseUnallocatedPayment(account, unallocated, actor);
         } else {
             newBalance = previousBalance.subtract(amount);
         }
@@ -85,14 +85,14 @@ public class MemoBalanceAdjustmentService {
                 new MemoBalanceAdjustedEvent(accountNumber, type, previousBalance, newBalance, now));
 
         auditLogger.record(new AuditEvent(
-                now, "system", "MEMO_BALANCE_ADJUSTED", "MemoAccount", accountNumber,
+                now, actor, "MEMO_BALANCE_ADJUSTED", "MemoAccount", accountNumber,
                 "memo-balance", type + ": " + previousBalance + " -> " + newBalance));
 
         if (newBalance.compareTo(BigDecimal.ZERO) == 0) {
             kafkaTemplate.send(MemoTopics.MEMO_LIQUIDATED, accountNumber,
                     new MemoLiquidatedEvent(accountNumber, now));
             auditLogger.record(new AuditEvent(
-                    now, "system", "MEMO_LIQUIDATED", "MemoAccount", accountNumber,
+                    now, actor, "MEMO_LIQUIDATED", "MemoAccount", accountNumber,
                     "memo-balance", "Balance reached zero"));
         }
 

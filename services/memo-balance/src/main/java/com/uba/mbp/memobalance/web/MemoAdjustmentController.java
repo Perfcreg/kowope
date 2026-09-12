@@ -5,6 +5,8 @@ import com.uba.mbp.memobalance.exception.MemoAccountNotFoundException;
 import com.uba.mbp.memobalance.service.MemoBalanceAdjustmentService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,8 +32,10 @@ public class MemoAdjustmentController {
     @PostMapping("/{accountNumber}/adjustments")
     @PreAuthorize("hasAnyRole('TRANSACTION_SERVICES', 'CREDIT_ADMIN')")
     public ResponseEntity<Void> adjust(
-            @PathVariable String accountNumber, @RequestBody AdjustmentRequest request) {
-        adjustmentService.adjust(accountNumber, request.type(), request.amount());
+            @PathVariable String accountNumber,
+            @RequestBody AdjustmentRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        adjustmentService.adjust(accountNumber, request.type(), request.amount(), jwt.getSubject());
         return ResponseEntity.noContent().build();
     }
 

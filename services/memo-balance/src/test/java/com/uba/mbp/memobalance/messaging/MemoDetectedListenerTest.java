@@ -67,6 +67,27 @@ class MemoDetectedListenerTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void ingestsSuccessfullyWhenAnOlderProducerSendsNoCountryAtAll() {
+        // Regression: Ticket 08 added `country` after Tickets 01/02 shipped. A
+        // producer still on the old MemoDetectedEvent schema sends null here,
+        // which must fall back gracefully (StaticCountryConfigLookup), not crash
+        // ingestion with an uncaught NullPointerException.
+        String accountNumber = "ACC-" + System.nanoTime();
+        MemoDetectedEvent event = new MemoDetectedEvent(
+                accountNumber, "CUST-1", "SOL-001", "NGN", "TXN-REF-1",
+                "written off", new BigDecimal("500.00"), Instant.parse("2026-01-10T09:00:00Z"),
+                "write-off-detection-service", null);
+
+        kafkaTemplate.send(MemoTopics.MEMO_DETECTED, accountNumber, event);
+
+        await().atMost(15, SECONDS).untilAsserted(() -> {
+            Optional<MemoAccount> saved = repository.findByAccountNumber(accountNumber);
+            assertTrue(saved.isPresent());
+            assertEquals("NGN", saved.get().getBaseCurrency());
+        });
+    }
+
+    @Test
     void rejectsADetectionMissingARequiredField() {
         String accountNumber = "ACC-" + System.nanoTime();
         MemoDetectedEvent invalidEvent = new MemoDetectedEvent(

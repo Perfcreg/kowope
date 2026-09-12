@@ -56,8 +56,11 @@ public class MemoDocumentController {
 
     @GetMapping("/{accountNumber}/documents/{documentId}")
     @PreAuthorize("hasRole('CREDIT_ADMIN')")
-    public ResponseEntity<byte[]> download(@PathVariable String accountNumber, @PathVariable UUID documentId) {
-        var document = documentService.retrieve(accountNumber, documentId);
+    public ResponseEntity<byte[]> download(
+            @PathVariable String accountNumber,
+            @PathVariable UUID documentId,
+            @AuthenticationPrincipal Jwt jwt) {
+        var document = documentService.retrieve(accountNumber, documentId, jwt.getSubject());
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(document.contentType()))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + document.fileName() + "\"")

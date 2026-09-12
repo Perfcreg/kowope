@@ -52,7 +52,7 @@ class MemoExceptionTest extends AbstractIntegrationTest {
         String accountNumber = "ACC-" + System.nanoTime();
         seedAccount(accountNumber, new BigDecimal("100.00"));
 
-        adjustmentService.adjust(accountNumber, AdjustmentType.PARTIAL_PAYMENT, new BigDecimal("150.00"));
+        adjustmentService.adjust(accountNumber, AdjustmentType.PARTIAL_PAYMENT, new BigDecimal("150.00"), "user-1");
 
         MemoAccount updated = accountRepository.findByAccountNumber(accountNumber).orElseThrow();
         assertEquals(0, BigDecimal.ZERO.compareTo(updated.getBalance()));

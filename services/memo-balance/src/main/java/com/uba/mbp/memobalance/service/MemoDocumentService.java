@@ -57,7 +57,7 @@ public class MemoDocumentService {
     public record DownloadedDocument(String fileName, String contentType, byte[] content) {
     }
 
-    public DownloadedDocument retrieve(String accountNumber, UUID documentId) {
+    public DownloadedDocument retrieve(String accountNumber, UUID documentId, String downloadedBy) {
         var account = memoAccountRepository.findByAccountNumber(accountNumber)
                 .orElseThrow(() -> new MemoAccountNotFoundException(accountNumber));
 
@@ -65,6 +65,11 @@ public class MemoDocumentService {
                 .orElseThrow(() -> new MemoDocumentNotFoundException(documentId));
 
         byte[] content = documentStorage.retrieve(document.getStorageKey());
+
+        auditLogger.record(new AuditEvent(
+                clock.instant(), downloadedBy, "MEMO_DOCUMENT_DOWNLOADED", "MemoAccount", accountNumber,
+                "memo-balance", "Downloaded " + document.getFileName()));
+
         return new DownloadedDocument(document.getFileName(), document.getContentType(), content);
     }
 }

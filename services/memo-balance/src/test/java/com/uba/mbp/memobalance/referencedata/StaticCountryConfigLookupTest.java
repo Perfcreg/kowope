@@ -24,4 +24,13 @@ class StaticCountryConfigLookupTest {
 
         assertEquals("NGN", config.baseCurrency());
     }
+
+    @Test
+    void fallsBackToTheDefaultForANullCountryInsteadOfThrowing() {
+        // A producer still on the pre-Ticket-08 MemoDetectedEvent schema sends no
+        // country at all — this must degrade gracefully, not crash ingestion.
+        CountryConfig config = lookup.lookup(null);
+
+        assertEquals("NGN", config.baseCurrency());
+    }
 }

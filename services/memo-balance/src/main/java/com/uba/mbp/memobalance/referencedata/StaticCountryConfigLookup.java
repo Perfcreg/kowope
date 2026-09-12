@@ -20,6 +20,11 @@ public class StaticCountryConfigLookup implements CountryConfigLookup {
 
     @Override
     public CountryConfig lookup(String countryCode) {
+        // countryCode is optional on MemoDetectedEvent (a producer on an older
+        // schema version may not send it yet) — null must fall back, not throw.
+        if (countryCode == null) {
+            return DEFAULT;
+        }
         return CONFIGS.getOrDefault(countryCode, DEFAULT);
     }
 }

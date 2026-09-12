@@ -29,23 +29,25 @@ public class MemoExceptionService {
         this.clock = clock;
     }
 
-    public void raiseUnallocatedPayment(MemoAccount account, BigDecimal unallocatedAmount) {
+    public void raiseUnallocatedPayment(MemoAccount account, BigDecimal unallocatedAmount, String actor) {
         raise(account, ExceptionType.UNALLOCATED_PAYMENT,
-                "Payment exceeded the outstanding balance by " + unallocatedAmount);
+                "Payment exceeded the outstanding balance by " + unallocatedAmount, actor);
     }
 
     public void checkForVisionDiscrepancy(MemoAccount account, BigDecimal visionBalance) {
         if (account.getBalance().compareTo(visionBalance) != 0) {
+            // Event-driven, not human-initiated — "system" is the correct actor here.
             raise(account, ExceptionType.BALANCE_DISCREPANCY,
-                    "memo-balance calculated " + account.getBalance() + " but Vision reported " + visionBalance);
+                    "memo-balance calculated " + account.getBalance() + " but Vision reported " + visionBalance,
+                    "system");
         }
     }
 
-    private void raise(MemoAccount account, ExceptionType type, String detail) {
+    private void raise(MemoAccount account, ExceptionType type, String detail, String actor) {
         var now = clock.instant();
         repository.save(MemoException.raise(account.getId(), type, detail, now));
         auditLogger.record(new AuditEvent(
-                now, "system", "MEMO_EXCEPTION_RAISED", "MemoAccount", account.getAccountNumber(),
+                now, actor, "MEMO_EXCEPTION_RAISED", "MemoAccount", account.getAccountNumber(),
                 "memo-balance", type + ": " + detail));
     }
 }
