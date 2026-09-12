@@ -18,6 +18,9 @@ dependencies {
 
     testImplementation(platform("org.testcontainers:testcontainers-bom:2.0.5"))
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    // Boot 4.x split MockMvc's test autoconfiguration (@AutoConfigureMockMvc) out
+    // of spring-boot-starter-test into its own web-specific starter.
+    testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
     testImplementation("org.springframework.security:spring-security-test")
     testImplementation("org.springframework.kafka:spring-kafka-test")
     testImplementation("org.testcontainers:testcontainers-junit-jupiter")
