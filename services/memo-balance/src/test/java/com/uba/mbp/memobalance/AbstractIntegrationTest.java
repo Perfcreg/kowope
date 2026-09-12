@@ -1,6 +1,7 @@
 package com.uba.mbp.memobalance;
 
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.KafkaContainer;
@@ -16,6 +17,11 @@ import org.testcontainers.utility.DockerImageName;
  */
 @Testcontainers
 @SpringBootTest
+// Different test classes here have different @AutoConfigureMockMvc/security setups,
+// so Spring Test's context cache would otherwise keep multiple contexts alive at
+// once against the same static containers — each with its own memo-balance Kafka
+// consumer group, fighting over partitions. Force a fresh context per class.
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 public abstract class AbstractIntegrationTest {
 
     @Container

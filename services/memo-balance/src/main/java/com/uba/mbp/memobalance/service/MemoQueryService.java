@@ -1,7 +1,10 @@
 package com.uba.mbp.memobalance.service;
 
+import com.uba.mbp.memobalance.domain.BalanceAdjustment;
 import com.uba.mbp.memobalance.domain.MemoAccount;
+import com.uba.mbp.memobalance.repository.BalanceAdjustmentRepository;
 import com.uba.mbp.memobalance.repository.MemoAccountRepository;
+import com.uba.mbp.memobalance.web.MemoHistoryEntry;
 import com.uba.mbp.memobalance.web.MemoAccountResponse;
 import org.springframework.stereotype.Service;
 
@@ -13,9 +16,11 @@ import java.util.Optional;
 public class MemoQueryService {
 
     private final MemoAccountRepository repository;
+    private final BalanceAdjustmentRepository balanceAdjustmentRepository;
 
-    public MemoQueryService(MemoAccountRepository repository) {
+    public MemoQueryService(MemoAccountRepository repository, BalanceAdjustmentRepository balanceAdjustmentRepository) {
         this.repository = repository;
+        this.balanceAdjustmentRepository = balanceAdjustmentRepository;
     }
 
     public Optional<MemoAccountResponse> findByAccountNumber(String accountNumber) {
@@ -24,7 +29,21 @@ public class MemoQueryService {
     }
 
     private MemoAccountResponse toResponse(MemoAccount account) {
-        // History is empty until Tickets 04/05 add a persisted adjustment trail.
-        return MemoAccountResponse.from(account, List.of());
+        // Ticket 04: real adjustment history now backs this; empty for a freshly
+        // detected account with no adjustments yet.
+        List<MemoHistoryEntry> history = balanceAdjustmentRepository
+                .findByMemoAccountIdOrderByOccurredAtAsc(account.getId())
+                .stream()
+                .map(this::toHistoryEntry)
+                .toList();
+        return MemoAccountResponse.from(account, history);
+    }
+
+    private MemoHistoryEntry toHistoryEntry(BalanceAdjustment adjustment) {
+        return new MemoHistoryEntry(
+                adjustment.getAdjustmentType().name(),
+                adjustment.getPreviousBalance(),
+                adjustment.getNewBalance(),
+                adjustment.getOccurredAt());
     }
 }

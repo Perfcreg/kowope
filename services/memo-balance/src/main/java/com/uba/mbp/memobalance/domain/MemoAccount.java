@@ -106,6 +106,15 @@ public class MemoAccount {
         this.updatedAt = now;
     }
 
+    /** Ticket 04/05: applies a recalculated balance, moving to LIQUIDATED if it reaches zero. */
+    public void applyAdjustedBalance(BigDecimal newBalance, Instant now) {
+        this.balance = newBalance;
+        this.updatedAt = now;
+        if (newBalance.compareTo(BigDecimal.ZERO) == 0) {
+            this.status = MemoStatus.LIQUIDATED;
+        }
+    }
+
     public UUID getId() {
         return id;
     }
