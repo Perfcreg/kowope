@@ -45,8 +45,9 @@ class ExcelImportProcessorTest {
         assertEquals(3, result.outcome().totalRows());
         assertEquals(1, result.outcome().accepted());
         assertEquals(2, result.outcome().rejected());
-        assertEquals(1, result.acceptedEvents().size());
-        assertEquals("ACC-001", result.acceptedEvents().get(0).accountNumber());
+        assertEquals(1, result.acceptedRows().size());
+        assertEquals(2, result.acceptedRows().get(0).rowNumber());
+        assertEquals("ACC-001", result.acceptedRows().get(0).event().accountNumber());
 
         assertTrue(result.outcome().rows().stream()
                 .anyMatch(row -> row.rowNumber() == 3 && !row.accepted() && row.reason().contains("Balance")));
@@ -76,7 +77,7 @@ class ExcelImportProcessorTest {
         ImportResult result = processor.process("maxim-user-1", "upload.xlsx", workbook);
 
         assertFalse(result.outcome().accepted() > 0);
-        assertTrue(result.acceptedEvents().isEmpty());
+        assertTrue(result.acceptedRows().isEmpty());
         assertEquals(1, result.outcome().rejected());
     }
 
@@ -96,14 +97,31 @@ class ExcelImportProcessorTest {
                 new RowOutcome(2, "ACC-001", true, null),
                 new RowOutcome(3, "ACC-002", true, null)));
 
-        ImportOutcome reconciled = processor.reconcileWithPublishFailures(outcome, Set.of("ACC-002"));
+        ImportOutcome reconciled = processor.reconcileWithPublishFailures(outcome, Set.of(3));
 
         assertEquals(1, reconciled.accepted());
         assertEquals(1, reconciled.rejected());
-        RowOutcome flipped = reconciled.rows().stream().filter(r -> r.accountNumber().equals("ACC-002")).findFirst().orElseThrow();
+        RowOutcome flipped = reconciled.rows().stream().filter(r -> r.rowNumber() == 3).findFirst().orElseThrow();
         assertFalse(flipped.accepted());
         assertTrue(flipped.reason().contains("Kafka"));
-        RowOutcome untouched = reconciled.rows().stream().filter(r -> r.accountNumber().equals("ACC-001")).findFirst().orElseThrow();
+        RowOutcome untouched = reconciled.rows().stream().filter(r -> r.rowNumber() == 2).findFirst().orElseThrow();
         assertTrue(untouched.accepted());
+    }
+
+    @Test
+    void reconciliationOnlyFlipsTheSpecificRowNotEveryRowSharingItsAccountNumber() {
+        // Regression: correlating by account number would flip BOTH rows here
+        // (two separate write-off transactions on the same account) even
+        // though only row 3's publish actually failed.
+        ImportOutcome outcome = new ImportOutcome("upload.xlsx", 2, 2, 0, List.of(
+                new RowOutcome(2, "ACC-SAME", true, null),
+                new RowOutcome(3, "ACC-SAME", true, null)));
+
+        ImportOutcome reconciled = processor.reconcileWithPublishFailures(outcome, Set.of(3));
+
+        assertEquals(1, reconciled.accepted());
+        assertEquals(1, reconciled.rejected());
+        assertTrue(reconciled.rows().stream().anyMatch(r -> r.rowNumber() == 2 && r.accepted()));
+        assertTrue(reconciled.rows().stream().anyMatch(r -> r.rowNumber() == 3 && !r.accepted()));
     }
 }

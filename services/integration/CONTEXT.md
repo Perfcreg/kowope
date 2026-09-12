@@ -1,6 +1,6 @@
 # integration
 
-The anti-corruption layer against Finacle, Vision, ICAD, and Excel (RFP §3.2, §3.13(bis), §4.1) — four adapters translating what each external system reports into domain events on Kafka (ADR-0001). Three adapters built so far (Write-Off Detection Service, Vision ETL Connector, Excel Import Service); ICAD Integration Adapter follows the same shape but has no real substitute available (see Architecture below).
+The anti-corruption layer against Finacle, Vision, ICAD, and Excel (RFP §3.2, §3.13(bis), §4.1) — four adapters translating what each external system reports into domain events on Kafka (ADR-0001). Each adapter is built on its own branch (this one carries the Excel Import Service's real implementation; the others are skeletons here until their own branches merge) — see [CONTEXT-MAP.md](../../CONTEXT-MAP.md) for which adapters are actually implemented where. The event contracts below (`MemoDetectedEvent`, `VisionBalanceSyncedEvent`) are documented as the agreed target shape regardless of which branch currently holds the real producer.
 
 ## Language
 

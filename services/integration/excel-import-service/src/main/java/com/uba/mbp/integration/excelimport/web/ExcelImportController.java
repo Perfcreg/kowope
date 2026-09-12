@@ -72,6 +72,6 @@ public class ExcelImportController {
 
     /** Strips control characters before a user-supplied filename reaches the audit trail (ADR-0005) or any log line. */
     private String sanitizeForLogging(String value) {
-        return value == null ? null : value.replaceAll("[\\r\\n\\t]", "_");
+        return value == null ? null : value.replaceAll("\\p{Cntrl}", "_");
     }
 }

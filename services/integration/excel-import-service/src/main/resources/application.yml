@@ -29,6 +29,7 @@ excel-import:
   publish:
     max-redeliveries: 3
     redelivery-delay-ms: 2000
+    backoff-multiplier: 2.0
 
 camel:
   springboot:

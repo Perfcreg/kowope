@@ -5,6 +5,7 @@ import com.uba.mbp.audit.AuditLogger;
 import com.uba.mbp.integration.excelimport.ExcelImportProcessor;
 import com.uba.mbp.integration.excelimport.event.MemoDetectedEvent;
 import com.uba.mbp.integration.excelimport.notification.NotificationClient;
+import com.uba.mbp.integration.excelimport.validate.ExcelRowValidator;
 import com.uba.mbp.integration.excelimport.validate.ImportOutcome;
 import com.uba.mbp.integration.excelimport.validate.ImportResult;
 import org.apache.camel.Exchange;
@@ -22,12 +23,11 @@ import java.util.Set;
  * ADR-0011: the EIP wiring. Business logic (parsing, validation, audit) lives
  * in {@link ExcelImportProcessor}; the per-event Kafka publish (Message
  * Translator, Kafka Producer, Dead Letter Channel) is a Camel route called
- * once per accepted event by {@link MemoDetectedPublisher} — a plain Java
- * loop rather than a Camel Splitter, because the HTTP response (User Story
- * 10) needs to know, per row, whether ITS publish actually succeeded, and
+ * once per accepted row by {@link MemoDetectedPublisher} — a plain Java loop
+ * rather than a Camel Splitter, because the HTTP response (User Story 10)
+ * needs to know, per row, whether ITS publish actually succeeded, and
  * correlating that back out of a Splitter's aggregation is far more fragile
- * than a synchronous loop over {@link MemoDetectedPublisher#producerTemplate}
- * sends.
+ * than a synchronous loop over {@code ProducerTemplate} sends.
  *
  * <p>Only the Kafka publish step carries a Dead Letter Channel: a malformed
  * upload (bad headers, unparseable rows) is a caller error the controller
@@ -71,10 +71,10 @@ public class ExcelImportRoute extends RouteBuilder {
                     InputStream content = exchange.getIn().getBody(InputStream.class);
 
                     ImportResult result = processor.process(actor, fileName, content);
-                    Set<String> failedAccountNumbers =
-                            publisher.publishAndReturnFailedAccountNumbers(result.acceptedEvents());
+                    Set<Integer> failedRowNumbers =
+                            publisher.publishAndReturnFailedRowNumbers(result.acceptedRows());
                     ImportOutcome finalOutcome =
-                            processor.reconcileWithPublishFailures(result.outcome(), failedAccountNumbers);
+                            processor.reconcileWithPublishFailures(result.outcome(), failedRowNumbers);
                     processor.auditFinalOutcome(actor, finalOutcome);
 
                     exchange.getIn().setBody(finalOutcome);
@@ -85,7 +85,7 @@ public class ExcelImportRoute extends RouteBuilder {
                 .onException(Exception.class)
                         .maximumRedeliveries("{{excel-import.publish.max-redeliveries:3}}")
                         .redeliveryDelay("{{excel-import.publish.redelivery-delay-ms:2000}}")
-                        .backOffMultiplier(2.0)
+                        .backOffMultiplier("{{excel-import.publish.backoff-multiplier:2.0}}")
                         .retryAttemptedLogLevel(LoggingLevel.WARN)
                         .handled(true)
                         .process(exchange -> {
@@ -95,7 +95,7 @@ public class ExcelImportRoute extends RouteBuilder {
                             notificationClient.alertOperations("excel-import-service publish failed after retries", detail);
                             auditLogger.record(new AuditEvent(
                                     clock.instant(), "system", "MEMO_DETECTED_PUBLISH_FAILED", "MemoAccount",
-                                    accountNumber, "excel-import-service", detail));
+                                    accountNumber, ExcelRowValidator.SOURCE, detail));
                             exchange.getIn().setHeader(MemoDetectedPublisher.PUBLISH_FAILED_HEADER, true);
                         })
                         .to("kafka:" + MEMO_DETECTED_TOPIC + ".dlq?brokers=" + KAFKA_BROKERS)
