@@ -17,6 +17,8 @@ A manual detection path for the Maxim team: an uploaded workbook is validated ag
 **ICAD clearance**:
 Requesting that NIBSS's Industry Customer Accounts Database (ICAD) update its record of a customer so their name is cleared following memo liquidation (RFP §3.8). Two real ICAD operations underlie this: **pushAccount** (submit the updated record) and **fetchAccount** (look it up/confirm status) — see ADR-0014. Distinct from detection/sync: this adapter *writes* to an external system, not just reads from one, and the result isn't known synchronously (real clearance takes 24-48 hours).
 
+**ICAD clearance's REST contract**: `POST /icad/clearance-requests` (`CREDIT_ADMIN`/`RECOVERY_TEAM` role required) — request body `ClearanceRequest` (`accountNumber`, `customerId`, `customerName`, `bvn` nullable, `clearedDate`); on success, `202 Accepted` with `ClearanceRequestAccepted` (`accountNumber`, `icadReference`, `status` — always `PENDING` at this point, since real clearance resolves asynchronously); on a pushAccount failure that exhausts its retries, `502 Bad Gateway` with a plain-text message. The actual clearance result arrives later as `IcadClearanceOutcomeEvent`, not in this response.
+
 **Finacle substitute** / **Vision substitute**:
 Apache Fineract, standing in for both real Finacle and real Vision in local/dev (ADR-0012, ADR-0013) — an already-running instance from an unrelated project (`mfb-stack`), not infrastructure this repo owns or provisions. The two adapters point at the same physical instance independently; that's a limitation of not having two real systems, not a design choice to treat Finacle and Vision as one thing.
 
