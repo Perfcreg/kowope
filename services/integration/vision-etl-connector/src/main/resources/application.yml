@@ -1,5 +1,28 @@
 spring:
   application:
     name: vision-etl-connector
+
 server:
   port: 8082
+
+# ADR-0013: mfb-stack's own committed dev-only Fineract credentials, not a
+# secret this project introduces. Real Vision would replace this block.
+fineract:
+  base-url: http://localhost:8444
+  tenant: default
+  username: mifos
+  password: password
+
+kafka:
+  bootstrap-servers: localhost:9092
+
+vision-balance-synced:
+  topic: mbp.integration.vision-balance-synced
+
+vision:
+  sync:
+    interval-ms: 60000
+
+camel:
+  springboot:
+    main-run-controller: true
