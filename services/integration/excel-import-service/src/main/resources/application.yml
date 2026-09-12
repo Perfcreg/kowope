@@ -5,6 +5,10 @@ spring:
     multipart:
       max-file-size: 10MB
       max-request-size: 10MB
+      # Keeps every upload up to the size cap in memory instead of spilling
+      # to a cleartext temp file on disk (RFP §4.3 at-rest encryption) — the
+      # threshold must be >= max-file-size for this to actually hold.
+      file-size-threshold: 10MB
 
 server:
   port: 8083
@@ -20,6 +24,11 @@ kafka:
 
 memo-detected:
   topic: mbp.integration.memo-detected
+
+excel-import:
+  publish:
+    max-redeliveries: 3
+    redelivery-delay-ms: 2000
 
 camel:
   springboot:

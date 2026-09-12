@@ -4,7 +4,9 @@ import com.uba.mbp.audit.AuditLogger;
 import com.uba.mbp.integration.excelimport.fixtures.ExcelFixtures;
 import com.uba.mbp.integration.excelimport.parse.ExcelWorkbookParser;
 import com.uba.mbp.integration.excelimport.validate.ExcelRowValidator;
+import com.uba.mbp.integration.excelimport.validate.ImportOutcome;
 import com.uba.mbp.integration.excelimport.validate.ImportResult;
+import com.uba.mbp.integration.excelimport.validate.RowOutcome;
 import org.junit.jupiter.api.Test;
 
 import java.io.InputStream;
@@ -13,9 +15,11 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -51,15 +55,17 @@ class ExcelImportProcessorTest {
     }
 
     @Test
-    void auditsEveryAcceptedRowAndTheOverallUpload() {
+    void auditsEveryAcceptedRowButNotTheFileLevelSummary() {
+        // The file-level summary is written separately by auditFinalOutcome(),
+        // after the route knows the real (post-publish) outcome — see
+        // reconcileWithPublishFailures's own test for why.
         InputStream workbook = ExcelFixtures.standardWorkbook(List.of(
                 List.of("ACC-001", "CUST-1", "SOL-001", "NGN", "TXN-1", "written off", "50000.00", "2026-01-15", "NG"),
                 List.of("ACC-002", "CUST-2", "SOL-002", "NGN", "TXN-2", "written off", "60000.00", "2026-01-16", "NG")));
 
         processor.process("maxim-user-1", "upload.xlsx", workbook);
 
-        // 2 accepted-row audits + 1 overall-upload audit
-        verify(auditLogger, times(3)).record(org.mockito.ArgumentMatchers.any());
+        verify(auditLogger, times(2)).record(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -72,5 +78,32 @@ class ExcelImportProcessorTest {
         assertFalse(result.outcome().accepted() > 0);
         assertTrue(result.acceptedEvents().isEmpty());
         assertEquals(1, result.outcome().rejected());
+    }
+
+    @Test
+    void reconciliationReturnsTheSameOutcomeWhenNothingFailedToPublish() {
+        ImportOutcome outcome = new ImportOutcome("upload.xlsx", 1, 1, 0,
+                List.of(new RowOutcome(2, "ACC-001", true, null)));
+
+        ImportOutcome reconciled = processor.reconcileWithPublishFailures(outcome, Set.of());
+
+        assertSame(outcome, reconciled);
+    }
+
+    @Test
+    void reconciliationFlipsAnAcceptedRowToRejectedWhenItsPublishFailed() {
+        ImportOutcome outcome = new ImportOutcome("upload.xlsx", 2, 2, 0, List.of(
+                new RowOutcome(2, "ACC-001", true, null),
+                new RowOutcome(3, "ACC-002", true, null)));
+
+        ImportOutcome reconciled = processor.reconcileWithPublishFailures(outcome, Set.of("ACC-002"));
+
+        assertEquals(1, reconciled.accepted());
+        assertEquals(1, reconciled.rejected());
+        RowOutcome flipped = reconciled.rows().stream().filter(r -> r.accountNumber().equals("ACC-002")).findFirst().orElseThrow();
+        assertFalse(flipped.accepted());
+        assertTrue(flipped.reason().contains("Kafka"));
+        RowOutcome untouched = reconciled.rows().stream().filter(r -> r.accountNumber().equals("ACC-001")).findFirst().orElseThrow();
+        assertTrue(untouched.accepted());
     }
 }

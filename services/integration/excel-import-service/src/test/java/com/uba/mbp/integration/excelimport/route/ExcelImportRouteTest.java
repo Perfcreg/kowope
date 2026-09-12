@@ -38,8 +38,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * ADR-0011 end to end: real Camel route (Content Enricher/Splitter/Kafka Producer),
+ * ADR-0011 end to end: real Camel route (Message Translator/Kafka Producer),
  * real Apache POI-generated .xlsx upload, real Testcontainers Kafka, real RBAC.
+ * Per-event publish-failure detection/reconciliation is covered in isolation
+ * by {@link MemoDetectedPublisherTest} and {@code ExcelImportProcessorTest}.
  */
 @Testcontainers
 @SpringBootTest

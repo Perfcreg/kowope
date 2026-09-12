@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Real Apache POI OOXML (.xlsx) parsing — no hand-rolled or mocked reader.
@@ -40,6 +41,7 @@ public class ExcelWorkbookParser {
             Map.entry("transferdate", "transferDate"));
 
     private static final String OPTIONAL_COUNTRY_COLUMN = "country";
+    private static final Pattern NON_ALPHANUMERIC = Pattern.compile("[^a-z0-9]");
 
     public List<RawExcelRow> parse(InputStream inputStream) {
         try (XSSFWorkbook workbook = new XSSFWorkbook(inputStream)) {
@@ -140,6 +142,6 @@ public class ExcelWorkbookParser {
     }
 
     private String normalize(String header) {
-        return header == null ? "" : header.toLowerCase().replaceAll("[^a-z0-9]", "");
+        return header == null ? "" : NON_ALPHANUMERIC.matcher(header.toLowerCase()).replaceAll("");
     }
 }
