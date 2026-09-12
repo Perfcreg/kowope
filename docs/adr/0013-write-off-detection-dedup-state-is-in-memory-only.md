@@ -10,9 +10,9 @@ An enterprise-review pass (2026-09-12, `feature/integration-write-off-detection`
 
 ## Decision
 
-`WriteOffScanner` now checks each transaction against `DetectedWriteOffStore` (keyed by savings-account-id + transaction-id, both stable Fineract identifiers) before publishing or auditing it, and marks it detected immediately after. `DetectedWriteOffStore` is an interface — `InMemoryDetectedWriteOffStore` its only implementation — following the exact seam pattern the ICAD Integration Adapter's own enterprise-review fix established for `PendingClearanceStore` (ADR-0015): a durable implementation can be substituted later without touching `WriteOffScanner`.
+`WriteOffScanner` now checks each transaction against `DetectedWriteOffStore` (keyed by savings-account-id + transaction-id, both stable Fineract identifiers) before publishing or auditing it, and marks it detected immediately after. `DetectedWriteOffStore` is an interface — `InMemoryDetectedWriteOffStore` its only implementation — so a durable implementation can be substituted later without touching `WriteOffScanner`. (Note: the ICAD Integration Adapter's own branch independently applied the identical interface-plus-in-memory-implementation pattern for its own pending-clearance state, in its own ADR numbered separately on that branch — the two fixes arrived at the same shape independently, not by sharing a locally-resolvable ADR reference; each branch's `docs/adr/` only contains what that branch itself added.)
 
-`InMemoryDetectedWriteOffStore` loses its state on restart, same accepted-risk shape as ADR-0015. The consequence here is milder than ICAD's: a restart causes at most one extra re-publish-and-re-audit round of whatever write-offs were already detected before the restart (memo-balance's own ticket-02 dedup logic, per `services/memo-balance/CONTEXT.md`, is the actual safety net against a duplicate `MemoDetected` event corrupting state) — it does not silently lose a detection the way ICAD's restart risk could silently lose a clearance outcome with no consumer-side safety net. Building a durable store now, ahead of an actual operational need, would be speculative infrastructure this repo hasn't stood up anywhere yet.
+`InMemoryDetectedWriteOffStore` loses its state on restart — an accepted risk, not a solved one. The consequence here is milder than an unbounded silent loss would be: a restart causes at most one extra re-publish-and-re-audit round of whatever write-offs were already detected before the restart (memo-balance's own ticket-02 dedup logic, per `services/memo-balance/CONTEXT.md`, is the actual safety net against a duplicate `MemoDetected` event corrupting state). Building a durable store now, ahead of an actual operational need, would be speculative infrastructure this repo hasn't stood up anywhere yet.
 
 ## Consequences
 
@@ -22,4 +22,4 @@ An enterprise-review pass (2026-09-12, `feature/integration-write-off-detection`
 
 ## Source
 
-Enterprise-review findings (Spec, Architecture Conformance, Integration Contract axes), 2026-09-12, `feature/integration-write-off-detection`; integration spec (issue #2) User Story 3 and Implementation Decisions; ADR-0015 (the ICAD adapter's parallel fix, same pattern).
+Enterprise-review findings (Spec, Architecture Conformance, Integration Contract axes), 2026-09-12, `feature/integration-write-off-detection`; integration spec (issue #2) User Story 3 and Implementation Decisions.

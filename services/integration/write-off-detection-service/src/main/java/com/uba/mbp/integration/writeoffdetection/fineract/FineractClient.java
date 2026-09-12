@@ -11,7 +11,7 @@ import java.util.List;
  */
 public interface FineractClient {
 
-    List<FineractClientSummary> listActiveClients();
+    List<FineractCustomerSummary> listActiveClients();
 
     List<Long> listSavingsAccountIds(long clientId);
 

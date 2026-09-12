@@ -24,8 +24,6 @@ import java.util.Map;
 @Component
 public class FineractHttpClient implements FineractClient {
 
-    private static final int PAGE_SIZE = 200;
-
     private final ProducerTemplate producerTemplate;
     private final FineractProperties properties;
     private final ObjectMapper objectMapper;
@@ -37,21 +35,22 @@ public class FineractHttpClient implements FineractClient {
     }
 
     @Override
-    public List<FineractClientSummary> listActiveClients() {
-        List<FineractClientSummary> clients = new ArrayList<>();
+    public List<FineractCustomerSummary> listActiveClients() {
+        List<FineractCustomerSummary> clients = new ArrayList<>();
+        int pageSize = properties.getClientPageSize();
         int offset = 0;
         while (true) {
-            JsonNode root = getJson("/fineract-provider/api/v1/clients?status=active&limit=" + PAGE_SIZE + "&offset=" + offset);
+            JsonNode root = getJson("/fineract-provider/api/v1/clients?status=active&limit=" + pageSize + "&offset=" + offset);
             int pageCount = 0;
             for (JsonNode item : root.path("pageItems")) {
-                clients.add(new FineractClientSummary(
+                clients.add(new FineractCustomerSummary(
                         item.path("id").asLong(),
                         item.path("displayName").asString(""),
                         item.path("officeName").asString("")));
                 pageCount++;
             }
             offset += pageCount;
-            if (pageCount < PAGE_SIZE || offset >= root.path("totalFilteredRecords").asInt(offset)) {
+            if (pageCount < pageSize || offset >= root.path("totalFilteredRecords").asInt(offset)) {
                 break;
             }
         }
@@ -76,7 +75,6 @@ public class FineractHttpClient implements FineractClient {
             transactions.add(new FineractSavingsTransaction(
                     tx.path("id").asLong(),
                     tx.path("note").asString(""),
-                    new BigDecimal(tx.path("amount").asString("0")),
                     toLocalDate(tx.path("date"))));
         }
         return new FineractSavingsAccount(

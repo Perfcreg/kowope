@@ -12,6 +12,7 @@ fineract:
   tenant: default
   username: mifos
   password: password
+  client-page-size: 200
 
 # RFP §3.13(bis) detection rule — separate from the fineract.* connection
 # block since the two change for different reasons.

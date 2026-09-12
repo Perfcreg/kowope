@@ -4,7 +4,7 @@ import com.uba.mbp.audit.AuditLogger;
 import com.uba.mbp.integration.writeoffdetection.config.WriteOffDetectionProperties;
 import com.uba.mbp.integration.writeoffdetection.event.MemoDetectedEvent;
 import com.uba.mbp.integration.writeoffdetection.fineract.FineractClient;
-import com.uba.mbp.integration.writeoffdetection.fineract.FineractClientSummary;
+import com.uba.mbp.integration.writeoffdetection.fineract.FineractCustomerSummary;
 import com.uba.mbp.integration.writeoffdetection.fineract.FineractSavingsAccount;
 import com.uba.mbp.integration.writeoffdetection.fineract.FineractSavingsTransaction;
 import com.uba.mbp.integration.writeoffdetection.notification.NotificationClient;
@@ -51,11 +51,11 @@ class WriteOffScannerTest {
 
     private void givenClientWithTransaction(long transactionId, String note, BigDecimal accountBalance, LocalDate date) {
         when(fineractClient.listActiveClients()).thenReturn(
-                List.of(new FineractClientSummary(4L, "Emeka Nwosu", "Abuja Branch")));
+                List.of(new FineractCustomerSummary(4L, "Emeka Nwosu", "Abuja Branch")));
         when(fineractClient.listSavingsAccountIds(4L)).thenReturn(List.of(10L));
         when(fineractClient.getSavingsAccountWithTransactions(10L)).thenReturn(
                 new FineractSavingsAccount(10L, "000000004", "NGN", accountBalance,
-                        List.of(new FineractSavingsTransaction(transactionId, note, new BigDecimal("999999.99"), date))));
+                        List.of(new FineractSavingsTransaction(transactionId, note, date))));
     }
 
     @Test
@@ -72,7 +72,6 @@ class WriteOffScannerTest {
         assertEquals("NGN", event.currency());
         assertEquals("98", event.postingReference());
         assertEquals("Account written off per approval", event.narration());
-        // The account's real balance (15000.00), not the transaction's own amount (999999.99).
         assertEquals(0, new BigDecimal("15000.00").compareTo(event.balance()));
         assertEquals("write-off-detection-service", event.source());
         // Country is deliberately null — reference-data-config (RFP §3.14) owns that, not this adapter.
@@ -111,16 +110,16 @@ class WriteOffScannerTest {
     @Test
     void scansEveryAccountAcrossEveryActiveClient() {
         when(fineractClient.listActiveClients()).thenReturn(List.of(
-                new FineractClientSummary(4L, "Emeka Nwosu", "Lagos Island Branch"),
-                new FineractClientSummary(5L, "Blessing Okafor", "Abuja Branch")));
+                new FineractCustomerSummary(4L, "Emeka Nwosu", "Lagos Island Branch"),
+                new FineractCustomerSummary(5L, "Blessing Okafor", "Abuja Branch")));
         when(fineractClient.listSavingsAccountIds(4L)).thenReturn(List.of(10L));
         when(fineractClient.listSavingsAccountIds(5L)).thenReturn(List.of(20L));
         when(fineractClient.getSavingsAccountWithTransactions(10L)).thenReturn(
                 new FineractSavingsAccount(10L, "000000004", "NGN", BigDecimal.TEN,
-                        List.of(new FineractSavingsTransaction(1L, "written off", BigDecimal.TEN, LocalDate.of(2026, 1, 1)))));
+                        List.of(new FineractSavingsTransaction(1L, "written off", LocalDate.of(2026, 1, 1)))));
         when(fineractClient.getSavingsAccountWithTransactions(20L)).thenReturn(
                 new FineractSavingsAccount(20L, "000000005", "NGN", BigDecimal.ONE,
-                        List.of(new FineractSavingsTransaction(2L, "write off approved", BigDecimal.ONE, LocalDate.of(2026, 1, 2)))));
+                        List.of(new FineractSavingsTransaction(2L, "write off approved", LocalDate.of(2026, 1, 2)))));
 
         List<MemoDetectedEvent> detected = scanner.scan();
 
@@ -145,6 +144,16 @@ class WriteOffScannerTest {
         List<MemoDetectedEvent> detected = scanner.scan();
 
         assertTrue(detected.isEmpty());
+        verify(notificationClient, times(1)).alertOperations(any(), any());
+    }
+
+    @Test
+    void aDatelessTransactionAlertsOnlyOnceNotOnEveryScanCycle() {
+        givenClientWithTransaction(98L, "Account written off per approval", new BigDecimal("15000.00"), null);
+
+        scanner.scan();
+        scanner.scan();
+
         verify(notificationClient, times(1)).alertOperations(any(), any());
     }
 }

@@ -9,6 +9,7 @@ import org.apache.camel.Exchange;
 import org.apache.camel.LoggingLevel;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.kafka.KafkaConstants;
+import org.apache.camel.model.OnExceptionDefinition;
 import org.apache.camel.model.RouteDefinition;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
@@ -24,6 +25,9 @@ import java.time.Clock;
  */
 @Component
 public class WriteOffDetectionRoute extends RouteBuilder {
+
+    private static final String MEMO_DETECTED_TOPIC = "{{memo-detected.topic:mbp.integration.memo-detected}}";
+    private static final String KAFKA_BROKERS = "{{kafka.bootstrap-servers:localhost:9092}}";
 
     private final WriteOffScanner scanner;
     private final NotificationClient notificationClient;
@@ -44,7 +48,7 @@ public class WriteOffDetectionRoute extends RouteBuilder {
     public void configure() {
         RouteDefinition scanRoute = from("timer:writeOffScan?period={{write-off.scan.interval-ms:30000}}")
                 .routeId("write-off-detection-scan");
-        deadLetterChannel(scanRoute, "write-off-detection-service scan failed after retries", null, true);
+        configureRetryAlertAndAudit(scanRoute, "write-off-detection-service scan failed after retries");
         scanRoute
                 .bean(scanner, "scan")
                 .split(body())
@@ -52,49 +56,49 @@ public class WriteOffDetectionRoute extends RouteBuilder {
                 .end();
 
         // A permanently failed publish still isn't lost — it lands on a
-        // dead-letter topic instead of only being logged, the same fix the
-        // ICAD adapter's enterprise-review round applied (ADR-0015).
+        // dead-letter topic instead of only being logged, rather than the
+        // alert+log-only handling the publish route previously had.
         RouteDefinition publishRoute = from("direct:publishMemoDetected")
                 .routeId("publish-memo-detected");
-        deadLetterChannel(publishRoute, "write-off-detection-service publish failed after retries",
-                "kafka:{{memo-detected.topic:mbp.integration.memo-detected}}.dlq"
-                        + "?brokers={{kafka.bootstrap-servers:localhost:9092}}", false);
+        configureRetryAlertAndDeadLetter(publishRoute, "write-off-detection-service publish failed after retries",
+                "kafka:" + MEMO_DETECTED_TOPIC + ".dlq?brokers=" + KAFKA_BROKERS);
         publishRoute
                 .process(exchange -> {
                     MemoDetectedEvent event = exchange.getIn().getBody(MemoDetectedEvent.class);
                     exchange.getIn().setHeader(KafkaConstants.KEY, event.accountNumber());
                     exchange.getIn().setBody(objectMapper.writeValueAsString(event));
                 })
-                .to("kafka:{{memo-detected.topic:mbp.integration.memo-detected}}"
-                        + "?brokers={{kafka.bootstrap-servers:localhost:9092}}");
+                .to("kafka:" + MEMO_DETECTED_TOPIC + "?brokers=" + KAFKA_BROKERS);
     }
 
-    /**
-     * @param auditOnFailure true for the scan route, where a bulk failure is
-     *                       worth its own audit trail entry (User Story 13);
-     *                       the publish route's failure is per-event and
-     *                       already covered by the dead-letter topic.
-     */
-    private void deadLetterChannel(RouteDefinition route, String alertSubject, String dlqUri, boolean auditOnFailure) {
-        var onException = route.onException(Exception.class)
+    /** The scan route's bulk failure is worth its own audit trail entry (User Story 13); it has no per-event DLQ. */
+    private void configureRetryAlertAndAudit(RouteDefinition route, String alertSubject) {
+        OnExceptionDefinition onException = retryThenAlert(route, alertSubject);
+        onException.process(exchange -> auditLogger.record(new AuditEvent(
+                clock.instant(), "system", "WRITE_OFF_SCAN_FAILED", "WriteOffScan",
+                "cycle-" + clock.instant(), "write-off-detection-service", failureDetail(exchange))));
+        onException.end();
+    }
+
+    /** The publish route's failure is per-event; a dead-letter topic replaces its own audit entry. */
+    private void configureRetryAlertAndDeadLetter(RouteDefinition route, String alertSubject, String dlqUri) {
+        OnExceptionDefinition onException = retryThenAlert(route, alertSubject);
+        onException.to(dlqUri);
+        onException.end();
+    }
+
+    private OnExceptionDefinition retryThenAlert(RouteDefinition route, String alertSubject) {
+        return route.onException(Exception.class)
                 .maximumRedeliveries(3)
                 .redeliveryDelay(2000)
                 .backOffMultiplier(2.0)
                 .retryAttemptedLogLevel(LoggingLevel.WARN)
                 .handled(true)
-                .process(exchange -> {
-                    Throwable cause = exchange.getProperty(Exchange.EXCEPTION_CAUGHT, Throwable.class);
-                    String detail = cause == null ? "unknown error" : String.valueOf(cause.getMessage());
-                    notificationClient.alertOperations(alertSubject, detail);
-                    if (auditOnFailure) {
-                        auditLogger.record(new AuditEvent(
-                                clock.instant(), "system", "WRITE_OFF_SCAN_FAILED", "WriteOffScan",
-                                "cycle-" + clock.instant(), "write-off-detection-service", detail));
-                    }
-                });
-        if (dlqUri != null) {
-            onException.to(dlqUri);
-        }
-        onException.end();
+                .process(exchange -> notificationClient.alertOperations(alertSubject, failureDetail(exchange)));
+    }
+
+    private String failureDetail(Exchange exchange) {
+        Throwable cause = exchange.getProperty(Exchange.EXCEPTION_CAUGHT, Throwable.class);
+        return cause == null ? "unknown error" : String.valueOf(cause.getMessage());
     }
 }

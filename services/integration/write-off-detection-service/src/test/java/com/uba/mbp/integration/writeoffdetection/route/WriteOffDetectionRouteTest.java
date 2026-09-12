@@ -1,6 +1,8 @@
 package com.uba.mbp.integration.writeoffdetection.route;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.uba.mbp.audit.AuditLogger;
+import com.uba.mbp.integration.writeoffdetection.notification.NotificationClient;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -13,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.containers.KafkaContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -22,12 +25,17 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.serverError;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.awaitility.Awaitility.await;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.verify;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -61,6 +69,15 @@ class WriteOffDetectionRouteTest {
     static void stopWireMock() {
         wireMock.stop();
     }
+
+    // Real beans (LoggingNotificationClient/Slf4jAuditLogger) only log — replaced
+    // with mocks here so the failure-path test can verify the calls actually
+    // happen, not just trust the log output.
+    @MockitoBean
+    private NotificationClient notificationClient;
+
+    @MockitoBean
+    private AuditLogger auditLogger;
 
     private Consumer<String, String> testConsumer;
 
@@ -104,7 +121,7 @@ class WriteOffDetectionRouteTest {
                          ]}
                         """)));
 
-        await().atMost(20, java.util.concurrent.TimeUnit.SECONDS).untilAsserted(() -> {
+        await().atMost(20, TimeUnit.SECONDS).untilAsserted(() -> {
             var records = testConsumer.poll(Duration.ofSeconds(2));
             boolean found = false;
             for (ConsumerRecord<String, String> record : records) {
@@ -118,5 +135,16 @@ class WriteOffDetectionRouteTest {
             }
             assertTrue(found, "Expected a MemoDetected message carrying the account balance, not the transaction amount");
         });
+    }
+
+    @Test
+    void aPersistentFineractFailureAlertsAndAuditsAfterRetriesExhausted() {
+        wireMock.stubFor(get(urlPathEqualTo("/fineract-provider/api/v1/clients"))
+                .willReturn(serverError()));
+
+        verify(notificationClient, timeout(20000))
+                .alertOperations(org.mockito.ArgumentMatchers.eq("write-off-detection-service scan failed after retries"), any());
+        verify(auditLogger, timeout(1000))
+                .record(org.mockito.ArgumentMatchers.argThat(event -> "WRITE_OFF_SCAN_FAILED".equals(event.action())));
     }
 }
