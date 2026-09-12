@@ -1,5 +1,20 @@
 spring:
   application:
     name: memo-balance
+  datasource:
+    url: jdbc:postgresql://localhost:5432/mbp
+    username: mbp
+    password: mbp
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+  flyway:
+    enabled: true
+  kafka:
+    # Producer/consumer factories are wired explicitly in config/KafkaConfig.java,
+    # not via spring.kafka.consumer/producer autoconfiguration — this is the one
+    # property that config still reads directly.
+    bootstrap-servers: localhost:9092
 server:
   port: 8088
