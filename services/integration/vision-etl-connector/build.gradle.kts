@@ -13,7 +13,11 @@ dependencyManagement {
 
 dependencies {
     implementation(project(":libs:audit-trail-lib"))
-    implementation("org.springframework.boot:spring-boot-starter-web")
+    // No spring-boot-starter-web: this adapter has no REST endpoint (pure
+    // timer + Kafka publisher) — the web starter would only stand up an
+    // empty, unauthenticated Tomcat for nothing. The autoconfigured Jackson 3
+    // ObjectMapper this route depends on comes via starter-json instead.
+    implementation("org.springframework.boot:spring-boot-starter-json")
 
     implementation("org.apache.camel.springboot:camel-spring-boot-starter")
     implementation("org.apache.camel.springboot:camel-http-starter")

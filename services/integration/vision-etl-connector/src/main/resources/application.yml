@@ -2,8 +2,8 @@ spring:
   application:
     name: vision-etl-connector
 
-server:
-  port: 8082
+# No server.port: this adapter has no REST endpoint (no spring-boot-starter-web
+# on the classpath), so no web server starts.
 
 # ADR-0013: mfb-stack's own committed dev-only Fineract credentials, not a
 # secret this project introduces. Real Vision would replace this block.
@@ -12,6 +12,7 @@ fineract:
   tenant: default
   username: mifos
   password: password
+  client-page-size: 200
 
 kafka:
   bootstrap-servers: localhost:9092

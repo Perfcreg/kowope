@@ -4,6 +4,7 @@ import com.uba.mbp.audit.AuditLogger;
 import com.uba.mbp.integration.visionetl.event.VisionBalanceSyncedEvent;
 import com.uba.mbp.integration.visionetl.fineract.FineractAccountBalance;
 import com.uba.mbp.integration.visionetl.fineract.FineractClient;
+import com.uba.mbp.integration.visionetl.notification.NotificationClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -15,20 +16,25 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class VisionBalanceScannerTest {
 
     private FineractClient fineractClient;
+    private NotificationClient notificationClient;
     private VisionBalanceScanner scanner;
 
     @BeforeEach
     void setUp() {
         fineractClient = mock(FineractClient.class);
         AuditLogger auditLogger = mock(AuditLogger.class);
+        notificationClient = mock(NotificationClient.class);
         Clock clock = Clock.fixed(Instant.parse("2026-01-15T00:00:00Z"), ZoneOffset.UTC);
-        scanner = new VisionBalanceScanner(fineractClient, auditLogger, clock);
+        scanner = new VisionBalanceScanner(fineractClient, auditLogger, notificationClient, clock);
     }
 
     @Test
@@ -62,5 +68,17 @@ class VisionBalanceScannerTest {
         when(fineractClient.listSavingsAccountBalances(4L)).thenReturn(List.of());
 
         assertTrue(scanner.scan().isEmpty());
+    }
+
+    @Test
+    void skipsAndAlertsOnAnAccountWithNoAccountNumberInsteadOfPublishingAnEmptyKey() {
+        when(fineractClient.listActiveClientIds()).thenReturn(List.of(4L));
+        when(fineractClient.listSavingsAccountBalances(4L)).thenReturn(
+                List.of(new FineractAccountBalance("", new BigDecimal("6125000"))));
+
+        List<VisionBalanceSyncedEvent> synced = scanner.scan();
+
+        assertTrue(synced.isEmpty());
+        verify(notificationClient, times(1)).alertOperations(any(), any());
     }
 }

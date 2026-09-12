@@ -78,6 +78,8 @@ The diagram groups things slightly differently than the contexts above. See the 
 | [0008](docs/adr/0008-local-first-development-environment.md) | `docker-compose` inner loop, Docker Desktop Kubernetes for integration testing; production target deferred to the org |
 | [0009](docs/adr/0009-testing-stack.md) | JUnit 5 + Mockito + Testcontainers |
 | [0010](docs/adr/0010-web-channel-stack.md) | Vite + React + TypeScript SPA for `channels`; mobile deferred |
+| [0011](docs/adr/0011-apache-camel-for-integration-context.md) | Apache Camel is the integration framework for every `integration` adapter |
+| [0012](docs/adr/0012-fineract-as-finacle-substitute.md) | Apache Fineract substitutes for Finacle in local/dev |
 | [0013](docs/adr/0013-fineract-as-vision-substitute.md) | Apache Fineract also substitutes for Vision — same instance, independent adapter |
 
 **Still open**: production deployment target (ADR-0008), mobile channel approach (ADR-0010).

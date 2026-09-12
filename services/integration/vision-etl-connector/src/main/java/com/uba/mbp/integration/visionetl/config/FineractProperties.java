@@ -14,6 +14,8 @@ public class FineractProperties {
     private String tenant = "default";
     private String username = "mifos";
     private String password = "password";
+    /** Page size for the paginated client listing — also lets tests exercise multi-page pagination with a small value. */
+    private int clientPageSize = 200;
 
     public String getBaseUrl() {
         return baseUrl;
@@ -45,5 +47,13 @@ public class FineractProperties {
 
     public void setPassword(String password) {
         this.password = password;
+    }
+
+    public int getClientPageSize() {
+        return clientPageSize;
+    }
+
+    public void setClientPageSize(int clientPageSize) {
+        this.clientPageSize = clientPageSize;
     }
 }

@@ -1,6 +1,8 @@
 package com.uba.mbp.integration.visionetl.route;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.uba.mbp.audit.AuditLogger;
+import com.uba.mbp.integration.visionetl.notification.NotificationClient;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -13,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.containers.KafkaContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -25,8 +28,13 @@ import java.util.Map;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.serverError;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.awaitility.Awaitility.await;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.verify;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** ADR-0011/0013 end to end: real Camel route, WireMock-stubbed Fineract, real Testcontainers Kafka. */
@@ -51,6 +59,15 @@ class VisionBalanceSyncRouteTest {
     static void stopWireMock() {
         wireMock.stop();
     }
+
+    // Real beans (LoggingNotificationClient/Slf4jAuditLogger) only log — replaced
+    // with mocks here so the failure-path test can verify the calls actually
+    // happen, not just trust the log output.
+    @MockitoBean
+    private NotificationClient notificationClient;
+
+    @MockitoBean
+    private AuditLogger auditLogger;
 
     private Consumer<String, String> testConsumer;
 
@@ -94,5 +111,16 @@ class VisionBalanceSyncRouteTest {
             }
             assertTrue(found, "Expected a VisionBalanceSynced message for account 000000004");
         });
+    }
+
+    @Test
+    void aPersistentFineractFailureAlertsAndAuditsAfterRetriesExhausted() {
+        wireMock.stubFor(get(urlPathEqualTo("/fineract-provider/api/v1/clients"))
+                .willReturn(serverError()));
+
+        verify(notificationClient, timeout(20000))
+                .alertOperations(eq("vision-etl-connector sync failed after retries"), any());
+        verify(auditLogger, timeout(1000))
+                .record(org.mockito.ArgumentMatchers.argThat(event -> "VISION_BALANCE_SYNC_FAILED".equals(event.action())));
     }
 }
