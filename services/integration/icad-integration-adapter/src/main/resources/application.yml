@@ -3,6 +3,9 @@ spring:
     name: icad-integration-adapter
 
 server:
+  # 8081-8084 are taken by the other three integration adapters on their own
+  # unmerged branches (write-off-detection-service, vision-etl-connector,
+  # excel-import-service); 8084 is unassigned pending merge order, not a gap.
   port: 8085
 
 # ADR-0014: no real NIBSS ICAD sandbox is reachable from this project — every

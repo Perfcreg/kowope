@@ -1,7 +1,7 @@
 package com.uba.mbp.integration.icad.web;
 
 import com.uba.mbp.integration.icad.clearance.ClearanceRequest;
-import com.uba.mbp.integration.icad.clearance.ClearanceRequestOutcome;
+import com.uba.mbp.integration.icad.clearance.ClearanceRequestAccepted;
 import org.apache.camel.CamelExecutionException;
 import org.apache.camel.ProducerTemplate;
 import org.springframework.http.HttpStatus;
@@ -33,11 +33,11 @@ public class IcadClearanceController {
 
     @PostMapping("/icad/clearance-requests")
     @PreAuthorize("hasAnyRole('CREDIT_ADMIN', 'RECOVERY_TEAM')")
-    public ResponseEntity<ClearanceRequestOutcome> requestClearance(
+    public ResponseEntity<ClearanceRequestAccepted> requestClearance(
             @RequestBody ClearanceRequest request,
             @AuthenticationPrincipal Jwt jwt) {
-        ClearanceRequestOutcome outcome = producerTemplate.requestBodyAndHeaders(
-                "direct:requestClearance", request, Map.of("actor", jwt.getSubject()), ClearanceRequestOutcome.class);
+        ClearanceRequestAccepted outcome = producerTemplate.requestBodyAndHeaders(
+                "direct:requestClearance", request, Map.of("actor", jwt.getSubject()), ClearanceRequestAccepted.class);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(outcome);
     }
 

@@ -8,7 +8,6 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -35,21 +34,19 @@ public class IcadClient {
     }
 
     public IcadPushResult pushAccount(ClearanceRequest request) {
-        Map<String, Object> body = new HashMap<>();
-        body.put("accountNumber", request.accountNumber());
-        body.put("customerId", request.customerId());
-        body.put("customerName", request.customerName());
-        body.put("bvn", request.bvn());
-        body.put("clearedDate", request.clearedDate() == null ? null : request.clearedDate().toString());
-
-        JsonNode response = postJson("/icad/v1/accounts", body);
-        return new IcadPushResult(response.path("reference").asString(""), response.path("status").asString("PENDING"));
+        JsonNode response = postJson("/icad/v1/accounts", request);
+        return new IcadPushResult(
+                response.path("reference").asString(""),
+                IcadClearanceStatus.fromWireValue(response.path("status").asString(null)));
     }
 
     public IcadFetchResult fetchAccount(String reference) {
         JsonNode response = getJson("/icad/v1/accounts/" + reference);
         String detail = response.path("detail").isMissingNode() ? null : response.path("detail").asString(null);
-        return new IcadFetchResult(response.path("reference").asString(reference), response.path("status").asString("PENDING"), detail);
+        return new IcadFetchResult(
+                response.path("reference").asString(reference),
+                IcadClearanceStatus.fromWireValue(response.path("status").asString(null)),
+                detail);
     }
 
     private JsonNode postJson(String path, Object body) {

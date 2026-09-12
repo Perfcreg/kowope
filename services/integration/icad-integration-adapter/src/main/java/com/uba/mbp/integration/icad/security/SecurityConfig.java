@@ -18,6 +18,16 @@ import java.nio.charset.StandardCharsets;
  * claim (see {@link JwtRoleConverter}). Only Credit Admin / Recovery Team have
  * "full privileges — verification, liquidation tracking, reporting" (RFP
  * §3.7) — the two roles that would trigger an ICAD clearance request.
+ *
+ * <p>Enterprise-review gap (2026-09-12), NOT fixed here, same as memo-balance's
+ * SecurityConfig deferring Country-scoping: RFP §4.3's MFA and
+ * sensitive-action session-timeout requirements aren't enforced — a role
+ * claim alone authorizes pushing a clearance to ICAD, an irreversible
+ * external-system mutation. There is no {@code amr}/{@code acr} claim
+ * convention anywhere in this repo yet, and no shorter-timeout mechanism
+ * distinct from the JWT's own {@code exp}, to build against. Both need
+ * shared-platform's authentication-service to exist first, same as the
+ * dev-secret {@link #jwtDecoder()} below.
  */
 @Configuration
 @EnableMethodSecurity

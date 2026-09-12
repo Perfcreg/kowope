@@ -131,6 +131,51 @@ class IcadClearanceRouteTest {
     }
 
     @Test
+    void aResolvedClearanceIsNotRePublishedOnALaterPollCycle() throws Exception {
+        // ADR-0015: removal only happens after a confirmed Kafka publish —
+        // this proves the whole push -> resolve -> publish -> remove chain
+        // actually completes, not just that the first publish happens.
+        wireMock.stubFor(com.github.tomakehurst.wiremock.client.WireMock.post(urlPathEqualTo("/icad/v1/accounts"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withBody("""
+                        {"reference":"REF-888","status":"PENDING"}
+                        """)));
+        wireMock.stubFor(get(urlPathEqualTo("/icad/v1/accounts/REF-888"))
+                .willReturn(aResponse().withHeader("Content-Type", "application/json").withBody("""
+                        {"reference":"REF-888","status":"CLEARED"}
+                        """)));
+
+        String body = """
+                {"accountNumber":"ACC-888","customerId":"CUST-8","customerName":"John Doe","bvn":"98765432109","clearedDate":"2026-01-10T00:00:00Z"}
+                """;
+        mockMvc.perform(post("/icad/clearance-requests").with(asCreditAdmin())
+                        .contentType("application/json").content(body))
+                .andExpect(status().isAccepted());
+
+        await().atMost(20, java.util.concurrent.TimeUnit.SECONDS).untilAsserted(() -> {
+            var records = testConsumer.poll(Duration.ofSeconds(2));
+            boolean found = false;
+            for (ConsumerRecord<String, String> record : records) {
+                if ("ACC-888".equals(record.key())) {
+                    found = true;
+                }
+            }
+            assertTrue(found, "Expected the first outcome message for account ACC-888");
+        });
+
+        // Give at least one more poll cycle (interval-ms=1000) a chance to run.
+        Thread.sleep(3000);
+        var laterRecords = testConsumer.poll(Duration.ofSeconds(2));
+        long acc888Count = 0;
+        for (ConsumerRecord<String, String> record : laterRecords) {
+            if ("ACC-888".equals(record.key())) {
+                acc888Count++;
+            }
+        }
+        org.junit.jupiter.api.Assertions.assertEquals(0, acc888Count,
+                "A resolved clearance must not be re-published on a later poll cycle");
+    }
+
+    @Test
     void aRoleWithoutClearancePrivilegeIsForbidden() throws Exception {
         RequestPostProcessor asCsm = SecurityMockMvcRequestPostProcessors.jwt()
                 .jwt(j -> j.claim("roles", List.of("CSM")))

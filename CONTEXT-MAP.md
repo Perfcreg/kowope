@@ -84,5 +84,6 @@ The diagram groups things slightly differently than the contexts above. See the 
 | [0012](docs/adr/0012-fineract-as-finacle-substitute.md) | Apache Fineract substitutes for Finacle in local/dev |
 | [0013](docs/adr/0013-fineract-as-vision-substitute.md) | Apache Fineract also substitutes for Vision — same instance, independent adapter |
 | [0014](docs/adr/0014-icad-modeled-contract-no-real-substitute.md) | ICAD Integration Adapter models a push/fetch contract with no real substitute — WireMock-only verification |
+| [0015](docs/adr/0015-pending-clearance-state-is-in-memory-only.md) | ICAD pending-clearance state is in-memory only — accepted, flagged restart risk |
 
 **Still open**: production deployment target (ADR-0008), mobile channel approach (ADR-0010).

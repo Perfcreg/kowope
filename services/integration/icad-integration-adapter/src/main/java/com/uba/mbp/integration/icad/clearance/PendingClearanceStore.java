@@ -1,33 +1,23 @@
 package com.uba.mbp.integration.icad.clearance;
 
-import org.springframework.stereotype.Component;
-
 import java.util.Collection;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * In-memory retry/dedup state, per the integration spec's Implementation
- * Decisions: "No context-specific persistence beyond each adapter's own
- * retry/dedup state; the Memo record itself belongs to memo-balance." A
- * pushed-but-unresolved clearance lives here until the poller confirms it —
- * lost on restart, which just means the next poll cycle re-derives nothing
- * lost (ICAD itself remains the source of truth for `icadReference`, this is
- * only the adapter's own worklist of references to check).
+ * The adapter's own retry/dedup worklist of clearances pushed to ICAD but not
+ * yet resolved, per the integration spec's Implementation Decisions: "No
+ * context-specific persistence beyond each adapter's own retry/dedup state."
+ * A real interface (ADR-0015), not just the in-memory implementation's shape,
+ * so a durable-storage implementation can be swapped in later without
+ * touching {@code IcadClearanceProcessor}.
+ *
+ * <p><b>{@link InMemoryPendingClearanceStore} loses this state on restart</b> —
+ * see ADR-0015 for why that's a currently-accepted risk, not a solved problem.
  */
-@Component
-public class PendingClearanceStore {
+public interface PendingClearanceStore {
 
-    private final ConcurrentHashMap<String, PendingClearance> pending = new ConcurrentHashMap<>();
+    void add(PendingClearance clearance);
 
-    public void add(PendingClearance clearance) {
-        pending.put(clearance.icadReference(), clearance);
-    }
+    Collection<PendingClearance> all();
 
-    public Collection<PendingClearance> all() {
-        return pending.values();
-    }
-
-    public void remove(String icadReference) {
-        pending.remove(icadReference);
-    }
+    void remove(String icadReference);
 }
