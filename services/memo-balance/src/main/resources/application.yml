@@ -19,6 +19,12 @@ spring:
 server:
   port: 8088
 
+memo-balance:
+  document-storage:
+    # Ticket 07: local filesystem stand-in for real Blob storage (ADR-0003) —
+    # swap DocumentStorage's implementation, not this property, once provisioned.
+    base-dir: "./data/memo-balance/documents"
+
 security:
   jwt:
     # Dev-only symmetric key so this service is a working, testable resource
