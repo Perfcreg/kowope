@@ -29,5 +29,9 @@ subprojects {
 
     tasks.withType<Test> {
         useJUnitPlatform()
+        // Testcontainers on Windows + Docker Desktop: the JVM's default preference for
+        // IPv6 "localhost" resolution races against Docker Desktop's IPv4-only port
+        // forwarding, causing every container connection to time out. Force IPv4.
+        jvmArgs("-Djava.net.preferIPv4Stack=true")
     }
 }

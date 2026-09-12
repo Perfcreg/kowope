@@ -1,5 +1,33 @@
 spring:
   application:
     name: memo-balance
+  datasource:
+    url: jdbc:postgresql://localhost:5432/mbp
+    username: mbp
+    password: mbp
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+  flyway:
+    enabled: true
+  kafka:
+    # Producer/consumer factories are wired explicitly in config/KafkaConfig.java,
+    # not via spring.kafka.consumer/producer autoconfiguration — this is the one
+    # property that config still reads directly.
+    bootstrap-servers: localhost:9092
 server:
   port: 8088
+
+memo-balance:
+  document-storage:
+    # Ticket 07: local filesystem stand-in for real Blob storage (ADR-0003) —
+    # swap DocumentStorage's implementation, not this property, once provisioned.
+    base-dir: "./data/memo-balance/documents"
+
+security:
+  jwt:
+    # Dev-only symmetric key so this service is a working, testable resource
+    # server before shared-platform's authentication-service exists (ticket 03).
+    # Replace with issuer-uri/jwk-set-uri once that context is real.
+    dev-secret: "dev-only-secret-replace-once-shared-platform-issues-real-tokens"
