@@ -164,4 +164,15 @@ class AdminUserControllerFlowTest extends AbstractIntegrationTest {
                         .contentType(APPLICATION_JSON).content(createBody))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void creatingAUserWithABlankUsernameIsBadRequest() throws Exception {
+        String adminToken = bearerFor("admin-test", Role.ADMIN);
+        seedUser("admin-test", Role.ADMIN);
+
+        String createBody = "{\"username\":\"\",\"password\":\"Some-Password-1!\",\"roles\":[\"CSM\"]}";
+        mockMvc.perform(post("/admin/users").header(AUTHORIZATION, adminToken)
+                        .contentType(APPLICATION_JSON).content(createBody))
+                .andExpect(status().isBadRequest());
+    }
 }
