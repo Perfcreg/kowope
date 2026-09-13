@@ -29,8 +29,8 @@ Every endpoint below requires `Authorization: Bearer <token>` with `roles` conta
 
 - `POST /admin/users` (`username`, `password`, `roles: string[]`) → `201 Created` `{username, mfaSecret, roles}`. `mfaSecret` is a real, freshly-generated TOTP secret (`TotpService.generateSecret()`, never a dev-fixed one) — exposed exactly once here; there's no way to retrieve it again. `409` on a duplicate username.
 - `GET /admin/users` → `200` `[{username, roles, createdAt}, ...]`. Never a password hash or MFA secret.
-- `PUT /admin/users/{username}/roles` (`roles: string[]`) → `200` with the updated summary. `404` if the user doesn't exist; `409` if the change would remove the last remaining `ADMIN` from the whole system.
-- An unrecognized role name in either request body → `400`.
+- `PUT /admin/users/{username}/roles` (`roles: string[]`) → `200` with the updated summary. `404` if the user doesn't exist; `409` if the change would remove the last remaining `ADMIN` from the whole system (this check is only race-safe within a single instance — see ADR-0018).
+- A missing/empty `roles`, or a blank `username`/`password`, or an unrecognized role name → `400`.
 
 Every create/role-change is audited (`USER_CREATED`, `USER_ROLES_CHANGED`) with the *acting* admin as actor — taken from their own verified token's `sub` claim, never a request field.
 

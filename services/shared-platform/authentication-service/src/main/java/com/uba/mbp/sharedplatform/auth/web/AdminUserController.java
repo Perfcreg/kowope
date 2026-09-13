@@ -39,8 +39,7 @@ public class AdminUserController {
         Set<Role> roles = parseRoles(request.roles());
         AdminUserService.CreatedUser created =
                 adminUserService.createUser(request.username(), request.password(), roles, admin.getSubject());
-        Set<String> roleNames = created.roles().stream().map(Enum::name).collect(Collectors.toSet());
-        return new CreateUserResponse(created.username(), created.mfaSecret(), roleNames);
+        return CreateUserResponse.from(created);
     }
 
     @GetMapping("/admin/users")
@@ -56,7 +55,17 @@ public class AdminUserController {
         return UserSummaryResponse.from(updated);
     }
 
+    /**
+     * Enterprise-review finding, 2026-09-13: a missing {@code roles} field previously
+     * threw an uncaught {@link NullPointerException} (a 500), and an empty one only
+     * failed as a 400 by accident of {@code EnumSet.copyOf}'s own validation, not
+     * because this code deliberately checked for it. Both are now explicit, clearly
+     * messaged 400s.
+     */
     private static Set<Role> parseRoles(Set<String> roleNames) {
+        if (roleNames == null || roleNames.isEmpty()) {
+            throw new IllegalArgumentException("At least one role is required");
+        }
         return roleNames.stream().map(Role::valueOf).collect(Collectors.toSet());
     }
 }

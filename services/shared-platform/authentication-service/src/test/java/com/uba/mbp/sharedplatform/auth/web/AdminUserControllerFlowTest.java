@@ -131,4 +131,37 @@ class AdminUserControllerFlowTest extends AbstractIntegrationTest {
                         .contentType(APPLICATION_JSON).content(updateBody))
                 .andExpect(status().isNotFound());
     }
+
+    @Test
+    void creatingAUserWithMissingRolesFieldIsBadRequestNotAServerError() throws Exception {
+        String adminToken = bearerFor("admin-test", Role.ADMIN);
+        seedUser("admin-test", Role.ADMIN);
+
+        String createBody = "{\"username\":\"no-roles-user\",\"password\":\"Some-Password-1!\"}";
+        mockMvc.perform(post("/admin/users").header(AUTHORIZATION, adminToken)
+                        .contentType(APPLICATION_JSON).content(createBody))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void creatingAUserWithEmptyRolesIsBadRequest() throws Exception {
+        String adminToken = bearerFor("admin-test", Role.ADMIN);
+        seedUser("admin-test", Role.ADMIN);
+
+        String createBody = "{\"username\":\"no-roles-user\",\"password\":\"Some-Password-1!\",\"roles\":[]}";
+        mockMvc.perform(post("/admin/users").header(AUTHORIZATION, adminToken)
+                        .contentType(APPLICATION_JSON).content(createBody))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void creatingAUserWithABlankPasswordIsBadRequest() throws Exception {
+        String adminToken = bearerFor("admin-test", Role.ADMIN);
+        seedUser("admin-test", Role.ADMIN);
+
+        String createBody = "{\"username\":\"blank-password-user\",\"password\":\"\",\"roles\":[\"CSM\"]}";
+        mockMvc.perform(post("/admin/users").header(AUTHORIZATION, adminToken)
+                        .contentType(APPLICATION_JSON).content(createBody))
+                .andExpect(status().isBadRequest());
+    }
 }

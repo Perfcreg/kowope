@@ -30,6 +30,20 @@ public class AdminUserService {
     private final AuditLogger auditLogger;
     private final Clock clock;
 
+    /**
+     * Serializes the last-admin check-then-act in {@link #replaceRoles} against
+     * concurrent calls (enterprise-review finding, 2026-09-13: without this, two
+     * concurrent demotions of two different admins could both observe
+     * {@code countByRole(ADMIN) == 2}, both pass, and leave zero admins).
+     * Only guards against a race within this single JVM instance — a real gap for
+     * a horizontally-scaled deployment (ADR-0002), which would need a DB-level
+     * lock (e.g. {@code SELECT ... FOR UPDATE}) instead. Accepted for now since
+     * ADR-0008 scopes this repo to a local-first, single-instance environment,
+     * the same class of assumption as the in-memory dedup stores flagged
+     * elsewhere (ADR-0015, ADR-0016).
+     */
+    private final Object lastAdminLock = new Object();
+
     public AdminUserService(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
@@ -53,6 +67,12 @@ public class AdminUserService {
      * {@code DevUserSeeder}'s own, separate concern).
      */
     public CreatedUser createUser(String username, String rawPassword, Set<Role> roles, String actorUsername) {
+        if (isBlank(username)) {
+            throw new IllegalArgumentException("username is required");
+        }
+        if (isBlank(rawPassword)) {
+            throw new IllegalArgumentException("password is required");
+        }
         if (userRepository.findByUsername(username).isPresent()) {
             throw new UsernameAlreadyExistsException("A user named '" + username + "' already exists");
         }
@@ -78,20 +98,29 @@ public class AdminUserService {
      * against the admin panel locking every administrator out of itself.
      */
     public UserSummary replaceRoles(String targetUsername, Set<Role> newRoles, String actorUsername) {
-        User user = userRepository.findByUsername(targetUsername)
-                .orElseThrow(() -> new UserNotFoundException("No user named '" + targetUsername + "'"));
-
-        Set<Role> oldRoles = Set.copyOf(user.getRoles());
-        boolean losingAdmin = oldRoles.contains(Role.ADMIN) && !newRoles.contains(Role.ADMIN);
-        if (losingAdmin && userRepository.countByRole(Role.ADMIN) <= 1) {
-            throw new LastAdminException(
-                    "Refusing to remove ADMIN from '" + targetUsername + "': they are the last remaining administrator");
+        if (newRoles == null || newRoles.isEmpty()) {
+            throw new IllegalArgumentException("At least one role is required");
         }
+        synchronized (lastAdminLock) {
+            User user = userRepository.findByUsername(targetUsername)
+                    .orElseThrow(() -> new UserNotFoundException("No user named '" + targetUsername + "'"));
 
-        user.replaceRoles(newRoles, clock.instant());
-        userRepository.save(user);
-        audit(actorUsername, "USER_ROLES_CHANGED", targetUsername, "Roles " + oldRoles + " -> " + newRoles);
-        return new UserSummary(user.getUsername(), user.getRoles(), user.getCreatedAt());
+            Set<Role> oldRoles = Set.copyOf(user.getRoles());
+            boolean losingAdmin = oldRoles.contains(Role.ADMIN) && !newRoles.contains(Role.ADMIN);
+            if (losingAdmin && userRepository.countByRole(Role.ADMIN) <= 1) {
+                throw new LastAdminException(
+                        "Refusing to remove ADMIN from '" + targetUsername + "': they are the last remaining administrator");
+            }
+
+            user.replaceRoles(newRoles, clock.instant());
+            userRepository.save(user);
+            audit(actorUsername, "USER_ROLES_CHANGED", targetUsername, "Roles " + oldRoles + " -> " + newRoles);
+            return new UserSummary(user.getUsername(), user.getRoles(), user.getCreatedAt());
+        }
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private void audit(String actor, String action, String affectedUsername, String detail) {
