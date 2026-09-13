@@ -12,13 +12,14 @@ Two services every other context depends on but doesn't own: **authentication-se
 
 ## Published REST contract (authentication-service)
 
-- `POST /auth/login` (`username`, `password`) → `202`-style `{pendingLoginId, mfaRequired: true}`. Never returns a token — MFA is mandatory for every account (RFP §4.3, no opt-out), so a password check alone is never sufficient.
-- `POST /auth/mfa/verify` (`pendingLoginId`, `code`) → `{accessToken, refreshToken, tokenType: "Bearer"}`. The `pendingLoginId` handle is single-use — consumed (deleted) whether the code is right or wrong, so a wrong guess forces a fresh `/auth/login`, not a retry on the same handle. A deliberate anti-bruteforce property, not a bug.
-- `POST /auth/refresh` (`refreshToken`) → `{accessToken, tokenType}`. Slides the session's Redis TTL forward.
-- `POST /auth/step-up` (`refreshToken`, `code`) → `{accessToken, tokenType}` with `session_class: "sensitive"`.
-- `GET /.well-known/jwks.json` → the public JWK Set. Every downstream `JwtDecoder` fetches this instead of calling authentication-service per request (RFP §3.7 User Story 6).
+- `POST /auth/login` (`username`, `password`) → `202 Accepted` `{pendingLoginId, mfaRequired: true}`. Never returns a token — MFA is mandatory for every account (RFP §4.3, no opt-out), so a password check alone is never sufficient.
+- `POST /auth/mfa/verify` (`pendingLoginId`, `code`) → `200` `{accessToken, refreshToken, tokenType: "Bearer"}`. The `pendingLoginId` handle is single-use — consumed (deleted) whether the code is right or wrong, so a wrong guess forces a fresh `/auth/login`, not a retry on the same handle. A deliberate anti-bruteforce property, not a bug.
+- `POST /auth/refresh` (`refreshToken`) → `200` `{accessToken, tokenType}`. Slides the session's Redis TTL forward. Does **not** rotate the refresh token itself — see Interim seams below.
+- `POST /auth/step-up` (`refreshToken`, `code`) → `200` `{accessToken, tokenType}` with `session_class: "sensitive"`.
+- `POST /auth/logout` (`refreshToken`) → `204 No Content`. Explicitly ends a session rather than waiting for its TTL to lapse; idempotent (logging out an already-expired or unknown token is not an error).
+- `GET /.well-known/jwks.json` → the public JWK Set. Every downstream `JwtDecoder` fetches this instead of calling authentication-service per request (RFP §3.7 User Story 6). If authentication-service is unreachable when a downstream service needs to verify a token, that surfaces as a 401 on the first affected request (JWKS is fetched lazily, not at startup) — the downstream service itself still starts up fine.
 
-**Access token claims**: `sub` (username), `roles` (JSON array of RFP role names — `CSM`, `RECOVERY_TEAM`, `TRANSACTION_SERVICES`, `CREDIT_ADMIN`, `MAXIM_TEAM`; this exact claim key/shape is what every downstream `JwtRoleConverter` already expects and is unchanged by this ticket), `amr` (`["pwd", "otp"]`, always — both factors are always used), `session_class` (`"standard"` or `"sensitive"`), `iat`, `exp`. Signed RS256; `kid`-tagged for JWKS lookup.
+**Access token claims**: `sub` (username), `roles` (JSON array of RFP role names — `CSM`, `RECOVERY_TEAM`, `TRANSACTION_SERVICES`, `CREDIT_ADMIN`, `MAXIM_TEAM`; this exact claim key/shape is what every downstream `JwtRoleConverter` already expects and is unchanged by this ticket), `amr` (`["pwd", "otp"]`, always — both factors are always used), `session_class` (`"standard"` or `"sensitive"`), `iat`, `exp`. Signed RS256; `kid`-tagged for JWKS lookup. **No Country/Region claim yet** — not just unenforced, not issued at all (see Interim seams below and ADR-0017).
 
 ## Dev-only seeded users
 
@@ -27,6 +28,8 @@ Two services every other context depends on but doesn't own: **authentication-se
 ## Interim seams / deferred gaps
 
 - **No downstream `session_class` enforcement** (see Language above) — issuing the claim is done, checking it is each context's own future work.
+- **No Country/Region claim at all** (RFP User Stories 2, 12) — blocked on `reference-data-config`'s Country model, which doesn't exist yet; there's nothing real to source the claim's value from. Same underlying block as `memo-balance`'s already-documented Country-scoping deferral, but distinct in kind: this is a missing claim, not just an unenforced one. See ADR-0017.
+- **No refresh-token rotation**: the same opaque refresh token stays valid for its whole sliding 30-minute window, however many times it's used — no absolute session ceiling, and a leaked token is usable for as long as it keeps getting refreshed. `/auth/logout` at least allows explicit termination. Rotating the token on every `/auth/refresh` call would change that endpoint's response shape (it would need to return a new refresh token too) — deliberately deferred to its own pass rather than folded in here. See ADR-0017.
 - **Signing key is ephemeral** (`SigningKeys`, generated fresh at startup, never persisted). Restarting authentication-service invalidates every previously-issued token; downstream services simply re-fetch the new JWKS and reject old tokens (fails closed). A real deployment needs a persisted/rotated key or an external KMS — out of scope per ADR-0008's local-first environment.
 - **No admin-driven user/role management yet** (Ticket 02) — `DevUserSeeder` is the only way users exist today.
 - **notification-service doesn't exist yet** (Ticket 03) — every other context's `NotificationClient` interim seam (a logging stand-in) still points at nothing real.
@@ -38,3 +41,5 @@ Two services every other context depends on but doesn't own: **authentication-se
 **MFA**: RFC 6238 TOTP via `dev.samstevens.totp` — a real, verified implementation, not hand-rolled HMAC code (same rationale as this repo using Apache POI for xlsx and Camel for EIPs instead of reinventing them).
 
 **Persistence**: Postgres for the `app_user`/`app_user_role` tables (Flyway-migrated); Redis for refresh-token sessions and pending-login handles (ADR-0003). Business logic (`AuthService`, `TokenService`, `TotpService`) is plain, Spring-independent orchestration over injected collaborators — the same "logic in beans, Spring only wires it" discipline used throughout `integration`.
+
+**Audit trail (ADR-0005)**: every login/MFA/refresh/step-up/logout outcome is recorded via `AuditLogger`, including the rejection paths (an expired/reused pending-login handle, an invalid/expired refresh token) — an enterprise-review fix, 2026-09-13, since those are exactly the "someone is probing with a stale or stolen token" signals the audit trail exists to catch. A rejected refresh/step-up token is logged by a short SHA-256 fingerprint, never its raw value — the point is enough detail to correlate repeated rejections of the same token, not enough to leak or replay the live credential.

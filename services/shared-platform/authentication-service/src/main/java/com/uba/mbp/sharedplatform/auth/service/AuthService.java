@@ -11,7 +11,12 @@ import com.uba.mbp.sharedplatform.auth.token.TokenService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.util.HexFormat;
+import java.util.Optional;
 
 /**
  * The login → MFA → token flow (RFP §3.7 User Stories 1, 2, 3, 6). Plain,
@@ -76,7 +81,10 @@ public class AuthService {
      */
     public TokenPair verifyMfa(String pendingLoginId, String code) {
         String username = pendingLoginStore.consume(pendingLoginId)
-                .orElseThrow(() -> new AuthenticationFailedException("Login session expired or already used"));
+                .orElseThrow(() -> {
+                    audit("MFA_VERIFY_REJECTED", "unknown", "Pending-login handle expired or already used");
+                    return new AuthenticationFailedException("Login session expired or already used");
+                });
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new AuthenticationFailedException("User no longer exists"));
 
@@ -94,7 +102,11 @@ public class AuthService {
     /** Issues a fresh access token for a still-active session, sliding the inactivity-timeout window (RFP §4.3). */
     public String refresh(String refreshToken) {
         String username = refreshTokenStore.resolveAndSlide(refreshToken)
-                .orElseThrow(() -> new AuthenticationFailedException("Session expired or refresh token invalid"));
+                .orElseThrow(() -> {
+                    audit("REFRESH_REJECTED", "unknown",
+                            "Session expired or refresh token invalid (fingerprint " + fingerprint(refreshToken) + ")");
+                    return new AuthenticationFailedException("Session expired or refresh token invalid");
+                });
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new AuthenticationFailedException("User no longer exists"));
         return tokenService.issueAccessToken(username, user.getRoles());
@@ -103,7 +115,11 @@ public class AuthService {
     /** Issues a short-lived "sensitive" token (RFP §4.3): requires a still-active session AND a fresh TOTP code. */
     public String stepUp(String refreshToken, String code) {
         String username = refreshTokenStore.resolve(refreshToken)
-                .orElseThrow(() -> new AuthenticationFailedException("Session expired or refresh token invalid"));
+                .orElseThrow(() -> {
+                    audit("STEP_UP_REJECTED", "unknown",
+                            "Session expired or refresh token invalid (fingerprint " + fingerprint(refreshToken) + ")");
+                    return new AuthenticationFailedException("Session expired or refresh token invalid");
+                });
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new AuthenticationFailedException("User no longer exists"));
 
@@ -116,8 +132,37 @@ public class AuthService {
         return tokenService.issueStepUpToken(username, user.getRoles());
     }
 
+    /**
+     * Explicit session termination (enterprise-review finding, 2026-09-13):
+     * {@code RefreshTokenStore.revoke} previously had no caller — a session
+     * could only ever end by sitting idle past its TTL. Idempotent: logging
+     * out an already-expired or unknown token revokes nothing extra and is
+     * not an error, matching the endpoint's "always succeeds" REST contract.
+     */
+    public void logout(String refreshToken) {
+        Optional<String> username = refreshTokenStore.resolve(refreshToken);
+        refreshTokenStore.revoke(refreshToken);
+        username.ifPresent(u -> audit("LOGOUT", u, "Session explicitly terminated"));
+    }
+
     private void audit(String action, String username, String detail) {
         auditLogger.record(new AuditEvent(
                 clock.instant(), username, action, "User", username, "authentication-service", detail));
+    }
+
+    /**
+     * A short, one-way fingerprint for audit-logging a bearer token's identity
+     * without ever writing the live credential itself to a log line (security
+     * review requirement) — enough to correlate repeated rejections of the
+     * same token, not enough to reconstruct or replay it.
+     */
+    private static String fingerprint(String token) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(token.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash, 0, 4);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is guaranteed available on every JVM", e);
+        }
     }
 }

@@ -83,7 +83,7 @@ class AuthControllerFlowTest extends AbstractIntegrationTest {
 
         String loginBody = "{\"username\":\"" + USERNAME + "\",\"password\":\"" + PASSWORD + "\"}";
         String loginResponse = mockMvc.perform(post("/auth/login").contentType(APPLICATION_JSON).content(loginBody))
-                .andExpect(status().isOk())
+                .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.mfaRequired").value(true))
                 .andReturn().getResponse().getContentAsString();
         String pendingLoginId = extractJsonField(loginResponse, "pendingLoginId");
@@ -118,6 +118,21 @@ class AuthControllerFlowTest extends AbstractIntegrationTest {
                 .andReturn().getResponse().getContentAsString();
         String stepUpToken = extractJsonField(stepUpResponse, "accessToken");
         assertThat(decoder.decode(stepUpToken).getClaimAsString("session_class")).isEqualTo("sensitive");
+
+        mockMvc.perform(post("/auth/logout").contentType(APPLICATION_JSON).content(refreshBody))
+                .andExpect(status().isNoContent());
+
+        // The session is really gone: refreshing with the now-logged-out token is rejected.
+        mockMvc.perform(post("/auth/refresh").contentType(APPLICATION_JSON).content(refreshBody))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void logoutOnAnUnknownTokenIsIdempotentAndNotAnError() throws Exception {
+        String body = "{\"refreshToken\":\"not-a-real-refresh-token\"}";
+
+        mockMvc.perform(post("/auth/logout").contentType(APPLICATION_JSON).content(body))
+                .andExpect(status().isNoContent());
     }
 
     @Test
@@ -135,7 +150,7 @@ class AuthControllerFlowTest extends AbstractIntegrationTest {
 
         String loginBody = "{\"username\":\"" + USERNAME + "\",\"password\":\"" + PASSWORD + "\"}";
         String loginResponse = mockMvc.perform(post("/auth/login").contentType(APPLICATION_JSON).content(loginBody))
-                .andExpect(status().isOk())
+                .andExpect(status().isAccepted())
                 .andReturn().getResponse().getContentAsString();
         String pendingLoginId = extractJsonField(loginResponse, "pendingLoginId");
 
