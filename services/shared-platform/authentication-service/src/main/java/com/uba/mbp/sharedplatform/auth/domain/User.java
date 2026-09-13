@@ -19,9 +19,9 @@ import java.util.UUID;
 
 /**
  * A shared-platform user: the identity, credential, RBAC, and MFA record
- * every other context authenticates against (RFP §3.7, §4.3). Ticket 02
- * (admin control panel) is what mutates {@link #roles} after creation; this
- * ticket only needs to read them for token issuance.
+ * every other context authenticates against (RFP §3.7, §4.3). The admin
+ * control panel (Ticket 02, {@code AdminUserService}) is what mutates
+ * {@link #roles} after creation, via {@link #replaceRoles}.
  */
 @Entity
 @Table(name = "app_user")
@@ -71,6 +71,12 @@ public class User {
         user.createdAt = now;
         user.updatedAt = now;
         return user;
+    }
+
+    /** Replaces this user's full role set (the admin panel's role-edit operation, RFP §3.7 User Story 5). */
+    public void replaceRoles(Set<Role> newRoles, Instant now) {
+        this.roles = EnumSet.copyOf(newRoles);
+        this.updatedAt = now;
     }
 
     public UUID getId() {

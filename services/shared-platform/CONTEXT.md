@@ -10,6 +10,8 @@ Two services every other context depends on but doesn't own: **authentication-se
 
 **Step-up / sensitive-action token** (RFP §4.3 "shorter timeouts... for sensitive data or transactions"): a short-lived (5 minute), non-refreshable access token from `POST /auth/step-up`, requiring a still-active session *and* a fresh TOTP code. Carries `session_class: "sensitive"` instead of the standard token's `session_class: "standard"`. **Issuing this token is built; no downstream endpoint checks the claim yet** — enforcing it on a specific sensitive action (e.g., `icad-integration-adapter`'s clearance push) is that context's own future work, same deferred-gap pattern as Country-scoping waiting on `reference-data-config`.
 
+**Admin** (RFP §4.5 "Admin teams"/"Administrators"; ADR-0018): a 6th role, distinct from the 5 business-data roles in RFP §3.7 — system administration only (create/list users, change roles via the control panel). Carries **no** business-data privilege in any context; no downstream `JwtRoleConverter` grants `ROLE_ADMIN` anything.
+
 ## Published REST contract (authentication-service)
 
 - `POST /auth/login` (`username`, `password`) → `202 Accepted` `{pendingLoginId, mfaRequired: true}`. Never returns a token — MFA is mandatory for every account (RFP §4.3, no opt-out), so a password check alone is never sufficient.
@@ -19,11 +21,22 @@ Two services every other context depends on but doesn't own: **authentication-se
 - `POST /auth/logout` (`refreshToken`) → `204 No Content`. Explicitly ends a session rather than waiting for its TTL to lapse; idempotent (logging out an already-expired or unknown token is not an error).
 - `GET /.well-known/jwks.json` → the public JWK Set. Every downstream `JwtDecoder` fetches this instead of calling authentication-service per request (RFP §3.7 User Story 6). If authentication-service is unreachable when a downstream service needs to verify a token, that surfaces as a 401 on the first affected request (JWKS is fetched lazily, not at startup) — the downstream service itself still starts up fine.
 
-**Access token claims**: `sub` (username), `roles` (JSON array of RFP role names — `CSM`, `RECOVERY_TEAM`, `TRANSACTION_SERVICES`, `CREDIT_ADMIN`, `MAXIM_TEAM`; this exact claim key/shape is what every downstream `JwtRoleConverter` already expects and is unchanged by this ticket), `amr` (`["pwd", "otp"]`, always — both factors are always used), `session_class` (`"standard"` or `"sensitive"`), `iat`, `exp`. Signed RS256; `kid`-tagged for JWKS lookup. **No Country/Region claim yet** — not just unenforced, not issued at all (see Interim seams below and ADR-0017).
+**Access token claims**: `sub` (username), `roles` (JSON array of role names — `CSM`, `RECOVERY_TEAM`, `TRANSACTION_SERVICES`, `CREDIT_ADMIN`, `MAXIM_TEAM`, `ADMIN`; this exact claim key/shape is what every downstream `JwtRoleConverter` already expects and is unchanged since Ticket 01), `amr` (`["pwd", "otp"]`, always — both factors are always used), `session_class` (`"standard"` or `"sensitive"`), `iat`, `exp`. Signed RS256; `kid`-tagged for JWKS lookup. **No Country/Region claim yet** — not just unenforced, not issued at all (see Interim seams below and ADR-0017).
+
+## Published REST contract (authentication-service admin control panel, ADR-0018)
+
+Every endpoint below requires `Authorization: Bearer <token>` with `roles` containing `ADMIN` (`401` with no token, `403` with a valid but non-admin token) — this is the one part of authentication-service that validates tokens rather than only issuing them, using its own signing key in-process (no HTTP round-trip to its own JWKS).
+
+- `POST /admin/users` (`username`, `password`, `roles: string[]`) → `201 Created` `{username, mfaSecret, roles}`. `mfaSecret` is a real, freshly-generated TOTP secret (`TotpService.generateSecret()`, never a dev-fixed one) — exposed exactly once here; there's no way to retrieve it again. `409` on a duplicate username.
+- `GET /admin/users` → `200` `[{username, roles, createdAt}, ...]`. Never a password hash or MFA secret.
+- `PUT /admin/users/{username}/roles` (`roles: string[]`) → `200` with the updated summary. `404` if the user doesn't exist; `409` if the change would remove the last remaining `ADMIN` from the whole system.
+- An unrecognized role name in either request body → `400`.
+
+Every create/role-change is audited (`USER_CREATED`, `USER_ROLES_CHANGED`) with the *acting* admin as actor — taken from their own verified token's `sub` claim, never a request field.
 
 ## Dev-only seeded users
 
-`DevUserSeeder` seeds one user per RFP role (`csm.dev`, `recovery-team.dev`, `transaction-services.dev`, `credit-admin.dev`, `maxim-team.dev`) on startup when `app.seed-dev-users=true` (the local default) — Ticket 02 (admin control panel) is what will let a real administrator create/manage users; until then this is how the service is actually exercisable. Password: `Dev-Only-Password-123!` (committed, dev-only, same disclosure pattern as ADR-0012's Fineract `mifos`/`password`). Each dev user's TOTP secret is deterministically derived from a fixed seed string (`DevSecrets.forRole`, RFC 4648 Base32 of `"mbp-dev-seed-" + roleName`) — reproducible across restarts, addable to a real authenticator app (Google Authenticator, Authy) for manual testing, and never used for a production-enrolled user's actual secret (those come from real enrollment via `TotpService.generateSecret()`).
+`DevUserSeeder` seeds one user per `Role` value (`csm.dev`, `recovery-team.dev`, `transaction-services.dev`, `credit-admin.dev`, `maxim-team.dev`, and — automatically, once `ADMIN` was added to the enum for Ticket 02, with no seeder code change needed — `admin.dev`) on startup when `app.seed-dev-users=true` (the local default). `admin.dev` is the bootstrap administrator: the first account able to create every subsequent real user through `/admin/users`, closing the chicken-and-egg problem of "who creates the first admin." Password: `Dev-Only-Password-123!` (committed, dev-only, same disclosure pattern as ADR-0012's Fineract `mifos`/`password`). Each dev user's TOTP secret is deterministically derived from a fixed seed string (`DevSecrets.forRole`, RFC 4648 Base32 of `"mbp-dev-seed-" + roleName`) — reproducible across restarts, addable to a real authenticator app (Google Authenticator, Authy) for manual testing, and never used for a production-enrolled user's actual secret (those come from real enrollment via `TotpService.generateSecret()`, including every user `/admin/users` creates).
 
 ## Interim seams / deferred gaps
 
@@ -31,12 +44,14 @@ Two services every other context depends on but doesn't own: **authentication-se
 - **No Country/Region claim at all** (RFP User Stories 2, 12) — blocked on `reference-data-config`'s Country model, which doesn't exist yet; there's nothing real to source the claim's value from. Same underlying block as `memo-balance`'s already-documented Country-scoping deferral, but distinct in kind: this is a missing claim, not just an unenforced one. See ADR-0017.
 - **No refresh-token rotation**: the same opaque refresh token stays valid for its whole sliding 30-minute window, however many times it's used — no absolute session ceiling, and a leaked token is usable for as long as it keeps getting refreshed. `/auth/logout` at least allows explicit termination. Rotating the token on every `/auth/refresh` call would change that endpoint's response shape (it would need to return a new refresh token too) — deliberately deferred to its own pass rather than folded in here. See ADR-0017.
 - **Signing key is ephemeral** (`SigningKeys`, generated fresh at startup, never persisted). Restarting authentication-service invalidates every previously-issued token; downstream services simply re-fetch the new JWKS and reject old tokens (fails closed). A real deployment needs a persisted/rotated key or an external KMS — out of scope per ADR-0008's local-first environment.
-- **No admin-driven user/role management yet** (Ticket 02) — `DevUserSeeder` is the only way users exist today.
+- **No user deletion or deactivation, no password reset/self-service enrollment** — the admin panel (Ticket 02) covers create/list/change-roles only, per User Story 4's literal scope; a created user's only path to changing their own password or re-enrolling MFA would need a later ticket.
 - **notification-service doesn't exist yet** (Ticket 03) — every other context's `NotificationClient` interim seam (a logging stand-in) still points at nothing real.
 
 ## Architecture
 
 **ADR-0017**: direct MFA-gated login instead of a full OAuth2/OIDC Authorization Code flow; RS256 + JWKS instead of a shared symmetric secret (closing the `security.jwt.dev-secret` interim seam `memo-balance`, `excel-import-service`, and `icad-integration-adapter`'s own `SecurityConfig`s had documented — `write-off-detection-service` and `vision-etl-connector` have no REST endpoint and never had one); the deferred `session_class` enforcement gap.
+
+**ADR-0018**: a 6th `ADMIN` role, interpreting RFP §4.5's "Admin teams"/"Administrators" as a distinct system-administration persona rather than a Credit Admin alias — carries no business-data privilege anywhere. This is also the first place authentication-service validates a token rather than only issuing one: `/admin/**` is a real resource server, decoding with its own public key in-process (`SigningKeys`), guarded by `hasRole("ADMIN")`. `AdminUserService.replaceRoles` refuses a change that would leave zero `ADMIN` users system-wide (`LastAdminException`, `409`) — a safeguard against the panel locking every administrator out of itself.
 
 **MFA**: RFC 6238 TOTP via `dev.samstevens.totp` — a real, verified implementation, not hand-rolled HMAC code (same rationale as this repo using Apache POI for xlsx and Camel for EIPs instead of reinventing them).
 
