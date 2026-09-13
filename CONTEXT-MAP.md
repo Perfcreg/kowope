@@ -22,7 +22,7 @@ Source material: [docs/rfp/2025-09-uba-memo-balance-rfp.md](docs/rfp/2025-09-uba
 
 Cross-cutting, not a context: `libs/audit-trail-lib` — the shared audit-logging contract (`AuditEvent`/`AuditLogger`), depended on by every service module. See ADR-0005.
 
-✅ = implemented, 🔶 = partially implemented. `memo-balance` (Tickets 01–08, PR #10) and `integration` (all four adapters: write-off-detection-service, vision-etl-connector, excel-import-service, icad-integration-adapter) are both fully implemented. The first three `integration` adapters use Apache Camel — ADR-0011 — against a Fineract stand-in for Finacle and Vision respectively (ADR-0012/ADR-0013); icad-integration-adapter has a materially weaker verification story since no real ICAD sandbox exists (ADR-0014) — see [services/integration/CONTEXT.md](services/integration/CONTEXT.md). `shared-platform` has its first service (authentication-service — RBAC token issuance/validation via MFA-gated login, ADR-0017), which closes the dev-secret interim seam every other implemented service's `SecurityConfig` had documented; `notification-service` doesn't exist yet, so `shared-platform` stays 🔶. Each implemented context's `CONTEXT.md` exists for real, including published/consumed event schemas other contexts should build against instead of reading its Java source.
+✅ = implemented, 🔶 = partially implemented. `memo-balance` (Tickets 01–08, PR #10) and `integration` (all four adapters: write-off-detection-service, vision-etl-connector, excel-import-service, icad-integration-adapter) are both fully implemented. The first three `integration` adapters use Apache Camel — ADR-0011 — against a Fineract stand-in for Finacle and Vision respectively (ADR-0012/ADR-0013); icad-integration-adapter has a materially weaker verification story since no real ICAD sandbox exists (ADR-0014) — see [services/integration/CONTEXT.md](services/integration/CONTEXT.md). `shared-platform` has its first service (authentication-service — RBAC token issuance/validation via MFA-gated login, ADR-0017, plus an admin-gated user-management control panel, ADR-0018), which closes the dev-secret interim seam every other implemented service's `SecurityConfig` had documented; `notification-service` doesn't exist yet, so `shared-platform` stays 🔶. Each implemented context's `CONTEXT.md` exists for real, including published/consumed event schemas other contexts should build against instead of reading its Java source.
 
 ## Relationships
 
@@ -50,6 +50,7 @@ Terms genuinely used across every context. Transcribed directly from the RFP (no
 | Transaction Services | Edit/update privileges for account data and memo balances |
 | Credit Admin | Full privileges — verification, liquidation tracking, reporting |
 | Maxim Team | View and manage Excel data integration processes |
+| Admin | System administration only (create users, list users, change roles via the control panel) — no business-data privilege of its own (ADR-0018) |
 
 **Region / Country model** (RFP §3.14): Region defaults to Africa & Nigeria; Country includes Nigeria and other subsidiaries. Each Country carries its own base currency, GL mappings, date format, and holiday calendar. Users are Country-scoped by default; cross-country roles are configurable.
 
@@ -87,5 +88,6 @@ The diagram groups things slightly differently than the contexts above. See the 
 | [0015](docs/adr/0015-pending-clearance-state-is-in-memory-only.md) | ICAD pending-clearance state is in-memory only — accepted, flagged restart risk |
 | [0016](docs/adr/0016-write-off-detection-dedup-state-is-in-memory-only.md) | Write-off detection dedup state is in-memory only — accepted, flagged restart risk |
 | [0017](docs/adr/0017-authentication-service-direct-login-not-full-oidc.md) | authentication-service issues tokens via direct MFA-gated login, not a full OAuth2/OIDC Authorization Code flow |
+| [0018](docs/adr/0018-admin-role-for-user-management.md) | A distinct ADMIN role gates the user-management control panel — no business-data privilege of its own |
 
 **Still open**: production deployment target (ADR-0008), mobile channel approach (ADR-0010).
