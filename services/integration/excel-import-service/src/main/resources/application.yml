@@ -13,11 +13,11 @@ spring:
 server:
   port: 8083
 
-# ADR pending shared-platform: dev-only symmetric secret, same interim seam as
-# memo-balance's SecurityConfig.
+# ADR-0017: shared-platform's authentication-service now issues real RS256
+# tokens, verified here via its JWKS endpoint (no shared secret).
 security:
   jwt:
-    dev-secret: "dev-only-secret-replace-once-shared-platform-issues-real-tokens"
+    jwk-set-uri: http://localhost:8085/.well-known/jwks.json
 
 kafka:
   bootstrap-servers: localhost:9092

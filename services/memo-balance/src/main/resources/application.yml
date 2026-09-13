@@ -27,7 +27,6 @@ memo-balance:
 
 security:
   jwt:
-    # Dev-only symmetric key so this service is a working, testable resource
-    # server before shared-platform's authentication-service exists (ticket 03).
-    # Replace with issuer-uri/jwk-set-uri once that context is real.
-    dev-secret: "dev-only-secret-replace-once-shared-platform-issues-real-tokens"
+    # ADR-0017: shared-platform's authentication-service now issues real
+    # RS256 tokens, verified here via its JWKS endpoint (no shared secret).
+    jwk-set-uri: http://localhost:8085/.well-known/jwks.json
