@@ -14,8 +14,10 @@ import java.util.stream.Collectors;
 /**
  * Maps the JWT's {@code roles} claim onto Spring Security authorities. Same
  * claim contract as memo-balance's converter (CONTEXT-MAP.md's shared
- * vocabulary) — this context's own copy since shared-platform's
- * authentication-service doesn't exist yet.
+ * vocabulary), now issued for real by shared-platform's authentication-service
+ * (ADR-0017) — this context's own copy since there's no shared library for
+ * Spring Security converters, per ADR-0001's event-driven (not shared-code)
+ * coupling between contexts.
  */
 public class JwtRoleConverter implements Converter<Jwt, AbstractAuthenticationToken> {
 

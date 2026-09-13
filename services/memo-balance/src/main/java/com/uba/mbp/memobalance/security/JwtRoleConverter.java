@@ -15,8 +15,8 @@ import java.util.stream.Collectors;
  * Maps the JWT's {@code roles} claim onto Spring Security authorities.
  * The claim contract (a "roles" array of RBAC role names — CSM, RECOVERY_TEAM,
  * TRANSACTION_SERVICES, CREDIT_ADMIN, MAXIM_TEAM, per CONTEXT-MAP.md's shared
- * vocabulary) is defined here because shared-platform's authentication-service
- * doesn't exist yet; this converter is the seam that will keep working once it does.
+ * vocabulary) is now issued for real by shared-platform's authentication-service
+ * (ADR-0017) — this converter is the seam that kept working unchanged once it did.
  */
 public class JwtRoleConverter implements Converter<Jwt, AbstractAuthenticationToken> {
 

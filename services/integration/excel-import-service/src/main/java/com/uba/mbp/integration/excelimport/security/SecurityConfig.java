@@ -16,8 +16,6 @@ import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
 
-import javax.crypto.spec.SecretKeySpec;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -25,16 +23,13 @@ import java.util.List;
  * (see {@link JwtRoleConverter}). Only the Maxim Team role has "manage Excel
  * data integration processes" privilege (RFP §3.7) — enforced at the controller.
  *
- * <p>The {@link #jwtDecoder()} bean uses a symmetric dev secret because
- * shared-platform's authentication-service doesn't exist yet — same interim
- * seam as memo-balance's SecurityConfig.
+ * <p>The {@link #jwtDecoder()} bean validates real tokens via shared-platform's
+ * authentication-service JWKS endpoint (ADR-0017) — this replaces the previous
+ * symmetric dev-secret decoder now that a real token issuer exists.
  */
 @Configuration
 @EnableMethodSecurity
 public class SecurityConfig {
-
-    @Value("${security.jwt.dev-secret}")
-    private String devSecret;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -57,10 +52,8 @@ public class SecurityConfig {
      * that gap without waiting on shared-platform's authentication-service.
      */
     @Bean
-    public JwtDecoder jwtDecoder() {
-        SecretKeySpec key = new SecretKeySpec(
-                devSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
-        NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(key).build();
+    public JwtDecoder jwtDecoder(@Value("${security.jwt.jwk-set-uri}") String jwkSetUri) {
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
         OAuth2TokenValidator<Jwt> requireExpiry = jwt -> jwt.getExpiresAt() != null
                 ? OAuth2TokenValidatorResult.success()
                 : OAuth2TokenValidatorResult.failure(

@@ -1,5 +1,33 @@
 spring:
   application:
     name: authentication-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/mbp
+    username: mbp
+    password: mbp
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+  flyway:
+    enabled: true
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
 server:
   port: 8085
+
+auth:
+  session:
+    # RFP §4.3 "session timeout for inactive users": a refresh call resets this.
+    inactivity-timeout: PT30M
+  pending-login:
+    # Window between password verification and MFA completion.
+    ttl: PT5M
+
+# ADR-0017: dev-only seeded users (one per RFP role), documented in
+# services/shared-platform/CONTEXT.md. Off in any environment that sets this false.
+app:
+  seed-dev-users: true

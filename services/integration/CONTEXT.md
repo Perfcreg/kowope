@@ -40,7 +40,7 @@ Each adapter owns its own copy of the event record it publishes — no shared li
 ## Interim seams (swap the implementation, not the interface, once the real context exists)
 
 - **Notifications**: `NotificationClient` (one per adapter) — `LoggingNotificationClient` logs at ERROR instead of paging anyone, until `shared-platform`'s notification-service exists (integration spec User Story 12).
-- **Auth**: each adapter carries its own copy of `SecurityConfig`/`JwtRoleConverter` (a symmetric dev-secret JWT decoder) — same interim seam as `memo-balance`'s, until `shared-platform`'s authentication-service exists.
+- **Auth**: `excel-import-service` and `icad-integration-adapter` each carry their own copy of `SecurityConfig`/`JwtRoleConverter` (`write-off-detection-service` and `vision-etl-connector` have no REST endpoint, so no inbound auth to configure). As of `shared-platform`'s authentication-service (ADR-0017), both validate real RS256 tokens via its JWKS endpoint — the symmetric dev-secret decoder this bullet used to describe is closed.
 
 ## Architecture
 

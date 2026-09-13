@@ -3,10 +3,10 @@ spring:
     name: icad-integration-adapter
 
 server:
-  # 8081-8084 are taken by the other three integration adapters on their own
-  # unmerged branches (write-off-detection-service, vision-etl-connector,
-  # excel-import-service); 8084 is unassigned pending merge order, not a gap.
-  port: 8085
+  # Was 8085 (chosen speculatively before merge, assuming that port was free);
+  # authentication-service already owns 8085 for real, so this collided once
+  # both services needed to run simultaneously (shared-platform Ticket 01).
+  port: 8093
 
 # ADR-0014: no real NIBSS ICAD sandbox is reachable from this project — every
 # environment this points at (including local dev) is a WireMock stub of the
@@ -17,11 +17,11 @@ icad:
   poll:
     interval-ms: 30000
 
-# ADR pending shared-platform: dev-only symmetric secret, same interim seam as
-# memo-balance's SecurityConfig.
+# ADR-0017: shared-platform's authentication-service now issues real RS256
+# tokens, verified here via its JWKS endpoint (no shared secret).
 security:
   jwt:
-    dev-secret: "dev-only-secret-replace-once-shared-platform-issues-real-tokens"
+    jwk-set-uri: http://localhost:8085/.well-known/jwks.json
 
 kafka:
   bootstrap-servers: localhost:9092
