@@ -1,6 +1,6 @@
 # shared-platform
 
-Two services every other context depends on but doesn't own: **authentication-service** (identity, MFA, RBAC token issuance/validation, session timeout — RFP §3.7, §4.3, §4.5) and **notification-service** (a single place every context sends an alert through, regardless of channel — RFP §3.4). authentication-service is built; notification-service isn't yet.
+Two services every other context depends on but doesn't own: **authentication-service** (identity, MFA, RBAC token issuance/validation, session timeout — RFP §3.7, §4.3, §4.5) and **notification-service** (a single place every context sends an alert through, regardless of channel — RFP §3.4). Both are built.
 
 ## Language
 
@@ -45,7 +45,20 @@ Every create/role-change is audited (`USER_CREATED`, `USER_ROLES_CHANGED`) with 
 - **No refresh-token rotation**: the same opaque refresh token stays valid for its whole sliding 30-minute window, however many times it's used — no absolute session ceiling, and a leaked token is usable for as long as it keeps getting refreshed. `/auth/logout` at least allows explicit termination. Rotating the token on every `/auth/refresh` call would change that endpoint's response shape (it would need to return a new refresh token too) — deliberately deferred to its own pass rather than folded in here. See ADR-0017.
 - **Signing key is ephemeral** (`SigningKeys`, generated fresh at startup, never persisted). Restarting authentication-service invalidates every previously-issued token; downstream services simply re-fetch the new JWKS and reject old tokens (fails closed). A real deployment needs a persisted/rotated key or an external KMS — out of scope per ADR-0008's local-first environment.
 - **No user deletion or deactivation, no password reset/self-service enrollment** — the admin panel (Ticket 02) covers create/list/change-roles only, per User Story 4's literal scope; a created user's only path to changing their own password or re-enrolling MFA would need a later ticket.
-- **notification-service doesn't exist yet** (Ticket 03) — every other context's `NotificationClient` interim seam (a logging stand-in) still points at nothing real.
+- **RFP §3.4's "accounts flagged for review by Transaction Services or Credit Admin" has no wired trigger** — no context publishes a "flagged for review" event today, so notification-service has nothing real to consume for this bullet specifically. Not fabricated with a fake event; see ADR-0019.
+
+## Published REST contract (notification-service, ADR-0019)
+
+- `POST /notifications` (`recipientGroup`, `subject`, `body`) → `200` `{recipientGroup, recipients, sentAt}`. Sends real email via SMTP and audits the outcome either way. `400` on an unconfigured `recipientGroup` or a blank field; `502` if the send itself fails. **Deliberately not RBAC-gated** — unlike every other endpoint in this repo, this one is called service-to-service only (the four `integration` adapters today), not by a human or the `channels` SPA; see ADR-0019 for why that's a considered decision, not an oversight.
+
+## Consumed events (notification-service)
+
+- **`mbp.memo-balance.liquidated`** (`memo-balance`'s `MemoLiquidatedEvent`) → notifies the `RECOVERY_TEAM` recipient group (RFP §3.4 "Memo balance updates following liquidation").
+- **`mbp.integration.icad-clearance-outcome`** (`icad-integration-adapter`'s `IcadClearanceOutcomeEvent`), when `status` is `DISCREPANCY`, `FAILED`, or `UNKNOWN` → notifies `CREDIT_ADMIN` (RFP §3.4/§4.6 + spec User Story 10). A `CLEARED` outcome sends nothing.
+
+## Recipient resolution (notification-service, ADR-0019)
+
+`notification.recipients.groups.<NAME>` in `application.yml` maps a group name to a static list of email addresses — there is no real staff-directory/HR system anywhere in this repo to resolve against, the same honest-placeholder pattern as `DevUserSeeder`'s fixed dev accounts. Groups configured today: `RECOVERY_TEAM`, `CREDIT_ADMIN`, `OPERATIONS` (the last used by the four `integration` adapters' `HttpNotificationClient`, replacing their old `LoggingNotificationClient` stand-in).
 
 ## Architecture
 
@@ -58,3 +71,5 @@ Every create/role-change is audited (`USER_CREATED`, `USER_ROLES_CHANGED`) with 
 **Persistence**: Postgres for the `app_user`/`app_user_role` tables (Flyway-migrated); Redis for refresh-token sessions and pending-login handles (ADR-0003). Business logic (`AuthService`, `TokenService`, `TotpService`) is plain, Spring-independent orchestration over injected collaborators — the same "logic in beans, Spring only wires it" discipline used throughout `integration`.
 
 **Audit trail (ADR-0005)**: every login/MFA/refresh/step-up/logout outcome is recorded via `AuditLogger`, including the rejection paths (an expired/reused pending-login handle, an invalid/expired refresh token) — an enterprise-review fix, 2026-09-13, since those are exactly the "someone is probing with a stale or stolen token" signals the audit trail exists to catch. A rejected refresh/step-up token is logged by a short SHA-256 fingerprint, never its raw value — the point is enough detail to correlate repeated rejections of the same token, not enough to leak or replay the live credential.
+
+**ADR-0019**: notification-service resolves recipients via a static configured group table (no real directory system exists in this repo yet); its `POST /notifications` is the first internal-only, non-RBAC-gated REST endpoint in the codebase, trusted-network per ADR-0004's single-external-ingress model; a failed send is audited and never rethrown from a Kafka listener, and never compounds into a new failure for the four `integration` adapters' `HttpNotificationClient` (which falls back to a local log on its own HTTP failure). It's stateless (no Postgres) — "record every notification sent" (User Story 11) is satisfied by `audit-trail-lib`'s log-based trail, same as every other service's own audit obligations. Tested against a real embedded SMTP server (GreenMail), not a mock; local dev uses `docker-compose.yml`'s `mailpit` service.

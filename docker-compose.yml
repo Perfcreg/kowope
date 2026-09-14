@@ -40,6 +40,16 @@ services:
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
+  # ADR-0019: a fake-SMTP catcher for notification-service's real email
+  # delivery — actively maintained (unlike the better-known but stale
+  # MailHog), same "real infra, not a mock" rationale as every other
+  # service here. Web UI at localhost:8025 to see what was actually sent.
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
 volumes:
   postgres-data:
   mongodb-data:

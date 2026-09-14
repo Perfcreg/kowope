@@ -31,6 +31,12 @@ excel-import:
     redelivery-delay-ms: 2000
     backoff-multiplier: 2.0
 
+# ADR-0019: shared-platform's notification-service, now real — HttpNotificationClient
+# replaces the old LoggingNotificationClient stand-in.
+notification:
+  service:
+    base-url: http://localhost:8086
+
 camel:
   springboot:
     main-run-controller: true
