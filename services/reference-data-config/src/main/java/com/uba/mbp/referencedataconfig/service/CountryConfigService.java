@@ -36,15 +36,7 @@ public class CountryConfigService {
     @Transactional
     public Country create(String countryCode, String region, String baseCurrency, String glWriteOffCode,
                            String glRecoveryCode, String actor) {
-        requireNonBlank(countryCode, "countryCode");
-        requireNonBlank(region, "region");
-        requireNonBlank(baseCurrency, "baseCurrency");
-        requireNonBlank(glWriteOffCode, "glWriteOffCode");
-        requireNonBlank(glRecoveryCode, "glRecoveryCode");
-
-        if (repository.existsByCountryCodeAndEffectiveToIsNull(countryCode)) {
-            throw new CountryAlreadyExistsException(countryCode);
-        }
+        validateCreate(countryCode, region, baseCurrency, glWriteOffCode, glRecoveryCode, actor);
 
         Country created = repository.save(Country.open(
                 countryCode, region, baseCurrency, glWriteOffCode, glRecoveryCode, clock.instant(), actor));
@@ -59,13 +51,7 @@ public class CountryConfigService {
     @Transactional
     public Country update(String countryCode, String region, String baseCurrency, String glWriteOffCode,
                            String glRecoveryCode, String actor) {
-        requireNonBlank(region, "region");
-        requireNonBlank(baseCurrency, "baseCurrency");
-        requireNonBlank(glWriteOffCode, "glWriteOffCode");
-        requireNonBlank(glRecoveryCode, "glRecoveryCode");
-
-        Country current = repository.findByCountryCodeAndEffectiveToIsNull(countryCode)
-                .orElseThrow(() -> new CountryNotFoundException(countryCode));
+        Country current = validateUpdate(countryCode, region, baseCurrency, glWriteOffCode, glRecoveryCode, actor);
 
         Instant now = clock.instant();
         current.close(now);
@@ -94,6 +80,57 @@ public class CountryConfigService {
     @Transactional(readOnly = true)
     public List<Country> listCurrent() {
         return repository.findAllByEffectiveToIsNull();
+    }
+
+    /**
+     * A rejected write is still audited (enterprise-review finding, 2026-09-15
+     * — the same gap notification-service's Ticket 03 review caught): a
+     * malformed or unauthorized attempt to change GL routing config is exactly
+     * the kind of action RFP §4.3's audit trail exists to catch, not just the
+     * successful ones. One {@code try/catch} around every validation/existence
+     * check in {@link #create} rather than an audit call duplicated at each of
+     * the five blank-field checks plus the duplicate-country check.
+     */
+    private void validateCreate(String countryCode, String region, String baseCurrency, String glWriteOffCode,
+                                 String glRecoveryCode, String actor) {
+        try {
+            requireNonBlank(countryCode, "countryCode");
+            requireNonBlank(region, "region");
+            requireNonBlank(baseCurrency, "baseCurrency");
+            requireNonBlank(glWriteOffCode, "glWriteOffCode");
+            requireNonBlank(glRecoveryCode, "glRecoveryCode");
+
+            if (repository.existsByCountryCodeAndEffectiveToIsNull(countryCode)) {
+                throw new CountryAlreadyExistsException(countryCode);
+            }
+        } catch (RuntimeException e) {
+            auditRejection(countryCode, actor, e);
+            throw e;
+        }
+    }
+
+    /** Same rejected-write-is-still-audited discipline as {@link #validateCreate}, for the update path. */
+    private Country validateUpdate(String countryCode, String region, String baseCurrency, String glWriteOffCode,
+                                    String glRecoveryCode, String actor) {
+        try {
+            requireNonBlank(region, "region");
+            requireNonBlank(baseCurrency, "baseCurrency");
+            requireNonBlank(glWriteOffCode, "glWriteOffCode");
+            requireNonBlank(glRecoveryCode, "glRecoveryCode");
+
+            return repository.findByCountryCodeAndEffectiveToIsNull(countryCode)
+                    .orElseThrow(() -> new CountryNotFoundException(countryCode));
+        } catch (RuntimeException e) {
+            auditRejection(countryCode, actor, e);
+            throw e;
+        }
+    }
+
+    private void auditRejection(String countryCode, String actor, RuntimeException e) {
+        auditLogger.record(new AuditEvent(
+                clock.instant(), actor, "COUNTRY_CONFIG_REJECTED", "Country",
+                countryCode == null ? "unknown" : countryCode,
+                SOURCE, "reason=" + e.getMessage()));
     }
 
     private static void requireNonBlank(String value, String fieldName) {

@@ -8,7 +8,7 @@ Country/GL-mapping reference data (RFP §3.14): every other context that needs a
 
 ## Published REST contract
 
-**Read path** (spec User Stories 3, 5, 7) — deliberately **not RBAC-gated**, same trust model as `notification-service`'s `POST /notifications` (ADR-0019): called service-to-service by other backend contexts, not a human or the `channels` SPA.
+**Read path** (spec User Stories 3, 7 — Country/GL mapping only, not the SOL → Region → Directorate lookup User Story 5 asks for; see Interim seams below) — deliberately **not RBAC-gated**, same trust model as `notification-service`'s `POST /notifications` (ADR-0019): called service-to-service by other backend contexts, not a human or the `channels` SPA.
 
 - `GET /countries/{code}` → `200` `{countryCode, region, baseCurrency, glWriteOffCode, glRecoveryCode, effectiveFrom}` (the currently-effective row only). `404` if no current mapping exists for that code.
 - `GET /countries` → `200` array of the same shape, one entry per country with a currently-effective row.
@@ -24,6 +24,7 @@ Every create/update is audited (`COUNTRY_CONFIG_CREATED`, `COUNTRY_CONFIG_UPDATE
 ## Interim seams / deferred gaps
 
 - **Only Country + GL mapping are real** — RFP §3.14 also asks for date format, holiday calendar, an admin UI, and "interface with core banking for all countries to monitor inflows." None of these have any anticipating code anywhere in this repo (confirmed by search before this ticket started) — genuinely out of scope here, not fabricated, left for a later ticket.
+- **Spec User Story 5 (reporting's "SOL → Region → Directorate mapping table for a given period," RFP §3.15) is not built** — corrected after an enterprise-review finding: an earlier version of this doc and ADR-0021 listed US5 as covered, which was wrong. Only Country-level mapping exists; no SOL or Directorate concept exists anywhere in this schema. The close-and-insert versioning pattern here is reusable for a future SOL/Directorate table, but that table itself needs to be built from scratch once `reporting` is real — same "zero anticipating code, zero real consumer" reasoning as the bullet above, not special-cased differently.
 - **`authentication-service`'s Country/Region JWT claim is still not issued** (ADR-0017's gap) — this ticket makes that *possible* (a real Country model now exists to source a value from) but doesn't make it *real*: `authentication-service`'s own `User` domain has no Country field yet, and the admin panel has no way to set one. That's a `shared-platform` change, a separate future ticket.
 - **No effective-dated (as-of-a-past-instant) lookup endpoint yet** — the schema supports it (see Language above), but nothing calls it since `reporting` doesn't exist yet. Add the endpoint when a real caller needs it, not speculatively.
 

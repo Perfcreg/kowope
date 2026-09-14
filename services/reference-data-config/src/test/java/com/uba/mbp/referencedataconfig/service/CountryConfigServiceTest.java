@@ -1,10 +1,12 @@
 package com.uba.mbp.referencedataconfig.service;
 
+import com.uba.mbp.audit.AuditEvent;
 import com.uba.mbp.audit.AuditLogger;
 import com.uba.mbp.referencedataconfig.domain.Country;
 import com.uba.mbp.referencedataconfig.domain.CountryRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -51,13 +53,20 @@ class CountryConfigServiceTest {
     }
 
     @Test
-    void rejectsCreatingACountryThatAlreadyHasACurrentMapping() {
+    void rejectsCreatingACountryThatAlreadyHasACurrentMappingButStillAuditsTheRejection() {
         when(repository.existsByCountryCodeAndEffectiveToIsNull("NG")).thenReturn(true);
 
         assertThatThrownBy(() -> service.create("NG", "Africa & Nigeria", "NGN", "GL-WO-NG", "GL-REC-NG", "admin-1"))
                 .isInstanceOf(CountryAlreadyExistsException.class);
 
-        verify(auditLogger, never()).record(any());
+        // Enterprise-review fix: a rejected admin write must still leave an
+        // audit trail entry — this was previously a silent, unaudited failure,
+        // the same gap notification-service's Ticket 03 review caught.
+        ArgumentCaptor<AuditEvent> auditCaptor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditLogger).record(auditCaptor.capture());
+        assertThat(auditCaptor.getValue().action()).isEqualTo("COUNTRY_CONFIG_REJECTED");
+        assertThat(auditCaptor.getValue().affectedRecordId()).isEqualTo("NG");
+        assertThat(auditCaptor.getValue().actor()).isEqualTo("admin-1");
     }
 
     @Test
@@ -78,19 +87,26 @@ class CountryConfigServiceTest {
     }
 
     @Test
-    void updatingAnUnknownCountryThrowsNotFound() {
+    void updatingAnUnknownCountryThrowsNotFoundAndAuditsTheRejection() {
         when(repository.findByCountryCodeAndEffectiveToIsNull("ZZ")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.update("ZZ", "Region", "NGN", "GL-WO", "GL-REC", "admin-1"))
                 .isInstanceOf(CountryNotFoundException.class);
+
+        ArgumentCaptor<AuditEvent> auditCaptor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditLogger).record(auditCaptor.capture());
+        assertThat(auditCaptor.getValue().action()).isEqualTo("COUNTRY_CONFIG_REJECTED");
     }
 
     @Test
-    void aBlankFieldIsRejectedBeforeTouchingTheRepository() {
+    void aBlankFieldIsRejectedBeforeTouchingTheRepositoryButStillAuditsTheRejection() {
         assertThatThrownBy(() -> service.create("NG", "Africa & Nigeria", " ", "GL-WO-NG", "GL-REC-NG", "admin-1"))
                 .isInstanceOf(IllegalArgumentException.class);
 
         verify(repository, never()).save(any());
+        ArgumentCaptor<AuditEvent> auditCaptor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditLogger).record(auditCaptor.capture());
+        assertThat(auditCaptor.getValue().action()).isEqualTo("COUNTRY_CONFIG_REJECTED");
     }
 
     @Test

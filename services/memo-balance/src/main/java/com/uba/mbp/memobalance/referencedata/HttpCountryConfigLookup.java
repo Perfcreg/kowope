@@ -24,10 +24,15 @@ public class HttpCountryConfigLookup implements CountryConfigLookup {
 
     public HttpCountryConfigLookup(@Value("${reference-data-config.base-url}") String baseUrl) {
         // Built via the static factory, not an injected RestClient.Builder
-        // bean — this repo's Boot setup doesn't autoconfigure one (no
-        // RestClientAutoConfiguration-triggering HTTP client library beyond
-        // the JDK default), and RestClient.builder() needs no Spring context
-        // dependency anyway.
+        // bean — empirically confirmed, not just theorized: injecting
+        // RestClient.Builder here throws NoSuchBeanDefinitionException in
+        // this module's actual Spring context (broke 23 tests across
+        // MemoAccountControllerTest, MemoAdjustmentControllerTest, and others
+        // before this fix). If a future Spring Boot/dependency upgrade makes
+        // RestClientAutoConfiguration register that bean in this module,
+        // injecting it would be the better long-term choice (picks up any
+        // shared RestClientCustomizer) — re-test before switching, don't
+        // assume it now works from Boot's documented defaults alone.
         this.restClient = RestClient.builder().baseUrl(baseUrl).build();
     }
 
