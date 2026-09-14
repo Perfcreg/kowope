@@ -62,20 +62,30 @@ class NotificationServiceTest {
     }
 
     @Test
-    void rejectsAnUnconfiguredRecipientGroupWithoutSendingOrAuditingSuccess() {
+    void rejectsAnUnconfiguredRecipientGroupWithoutSendingButStillAuditsTheFailure() {
         assertThatThrownBy(() -> service.send("NOT_A_REAL_GROUP", "subject", "body"))
                 .isInstanceOf(UnknownRecipientGroupException.class);
 
         verify(mailSender, never()).send(any(SimpleMailMessage.class));
-        verify(auditLogger, never()).record(any());
+
+        // Enterprise-review fix: a rejected notification must still leave an
+        // audit trail entry — this was previously a silent, unaudited failure.
+        ArgumentCaptor<AuditEvent> auditCaptor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditLogger).record(auditCaptor.capture());
+        assertThat(auditCaptor.getValue().action()).isEqualTo("NOTIFICATION_FAILED");
+        assertThat(auditCaptor.getValue().affectedRecordId()).isEqualTo("NOT_A_REAL_GROUP");
     }
 
     @Test
-    void aBlankSubjectIsRejectedBeforeResolvingRecipients() {
+    void aBlankSubjectIsRejectedBeforeResolvingRecipientsButStillAuditsTheFailure() {
         assertThatThrownBy(() -> service.send("RECOVERY_TEAM", " ", "body"))
                 .isInstanceOf(IllegalArgumentException.class);
 
         verify(mailSender, never()).send(any(SimpleMailMessage.class));
+
+        ArgumentCaptor<AuditEvent> auditCaptor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditLogger).record(auditCaptor.capture());
+        assertThat(auditCaptor.getValue().action()).isEqualTo("NOTIFICATION_FAILED");
     }
 
     @Test

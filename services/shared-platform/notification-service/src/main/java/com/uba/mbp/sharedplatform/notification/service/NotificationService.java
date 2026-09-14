@@ -50,11 +50,18 @@ public class NotificationService {
      */
     public NotificationResult send(String recipientGroup, String subject, String body) {
         if (isBlank(recipientGroup) || isBlank(subject) || isBlank(body)) {
+            String group = isBlank(recipientGroup) ? "unknown" : recipientGroup;
+            auditLogger.record(new AuditEvent(
+                    clock.instant(), "system", "NOTIFICATION_FAILED", "RecipientGroup", group,
+                    SOURCE, "reason=recipientGroup/subject/body must all be non-blank"));
             throw new IllegalArgumentException("recipientGroup, subject, and body are all required");
         }
 
         List<String> recipients = recipientsProperties.getGroups().get(recipientGroup);
         if (recipients == null || recipients.isEmpty()) {
+            auditLogger.record(new AuditEvent(
+                    clock.instant(), "system", "NOTIFICATION_FAILED", "RecipientGroup", recipientGroup,
+                    SOURCE, "reason=no recipients configured for group subject=" + subject));
             throw new UnknownRecipientGroupException(recipientGroup);
         }
 

@@ -56,6 +56,10 @@ Every create/role-change is audited (`USER_CREATED`, `USER_ROLES_CHANGED`) with 
 - **`mbp.memo-balance.liquidated`** (`memo-balance`'s `MemoLiquidatedEvent`) → notifies the `RECOVERY_TEAM` recipient group (RFP §3.4 "Memo balance updates following liquidation").
 - **`mbp.integration.icad-clearance-outcome`** (`icad-integration-adapter`'s `IcadClearanceOutcomeEvent`), when `status` is `DISCREPANCY`, `FAILED`, or `UNKNOWN` → notifies `CREDIT_ADMIN` (RFP §3.4/§4.6 + spec User Story 10). A `CLEARED` outcome sends nothing.
 
+## Escalation (spec User Story 8, ADR-0020)
+
+RFP §3.9's "escalate unresolved [action] items to stakeholders within specified timelines" is satisfied for the one action-plan type (of the three §3.9 names — liquidation updates, verification requests, ICAD escalations) with a real pending/resolvable lifecycle today: ICAD clearances. The age-check and escalate-once logic live in `icad-integration-adapter` itself (it owns the pending state; `notification-service` has no visibility into it), which calls this service's existing `POST /notifications` unchanged — no new endpoint or event was needed here. `memo-balance` (liquidation) and `account-verification` (verification requests, not yet built) have no equivalent trigger wired — not fabricated, see ADR-0020.
+
 ## Recipient resolution (notification-service, ADR-0019)
 
 `notification.recipients.groups.<NAME>` in `application.yml` maps a group name to a static list of email addresses — there is no real staff-directory/HR system anywhere in this repo to resolve against, the same honest-placeholder pattern as `DevUserSeeder`'s fixed dev accounts. Groups configured today: `RECOVERY_TEAM`, `CREDIT_ADMIN`, `OPERATIONS` (the last used by the four `integration` adapters' `HttpNotificationClient`, replacing their old `LoggingNotificationClient` stand-in).

@@ -1,10 +1,10 @@
 package com.uba.mbp.integration.icad.notification;
 
+import com.uba.mbp.integration.icad.config.NotificationServiceProperties;
 import org.apache.camel.Exchange;
 import org.apache.camel.ProducerTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -22,7 +22,12 @@ import java.util.Map;
 @Component
 public class HttpNotificationClient implements NotificationClient {
 
-    private static final Logger log = LoggerFactory.getLogger("OPERATIONS_ALERT");
+    // Two distinct log categories, not one shared "OPERATIONS_ALERT" logger
+    // (Standards finding, 2026-09-14): an ops-page and a business-stakeholder
+    // escalation failure are different signals a log-filter needs to tell
+    // apart without parsing message text.
+    private static final Logger opsLog = LoggerFactory.getLogger("OPERATIONS_ALERT");
+    private static final Logger escalationLog = LoggerFactory.getLogger("ESCALATION_ALERT");
     private static final String RECIPIENT_GROUP = "OPERATIONS";
 
     private final ProducerTemplate producerTemplate;
@@ -30,23 +35,32 @@ public class HttpNotificationClient implements NotificationClient {
     private final String baseUrl;
 
     public HttpNotificationClient(ProducerTemplate producerTemplate, ObjectMapper objectMapper,
-                                   @Value("${notification.service.base-url}") String baseUrl) {
+                                   NotificationServiceProperties properties) {
         this.producerTemplate = producerTemplate;
         this.objectMapper = objectMapper;
-        this.baseUrl = baseUrl;
+        this.baseUrl = properties.getBaseUrl();
     }
 
     @Override
     public void alertOperations(String subject, String detail) {
+        post(RECIPIENT_GROUP, subject, detail, opsLog);
+    }
+
+    @Override
+    public void escalate(String recipientGroup, String subject, String detail) {
+        post(recipientGroup, subject, detail, escalationLog);
+    }
+
+    private void post(String recipientGroup, String subject, String detail, Logger fallbackLog) {
         try {
             String requestJson = objectMapper.writeValueAsString(
-                    new NotificationRequestBody(RECIPIENT_GROUP, subject, detail));
+                    new NotificationRequestBody(recipientGroup, subject, detail));
             Map<String, Object> headers = Map.of(
                     Exchange.HTTP_METHOD, "POST",
                     Exchange.CONTENT_TYPE, "application/json");
             producerTemplate.requestBodyAndHeaders(baseUrl + "/notifications", requestJson, headers, String.class);
         } catch (RuntimeException e) {
-            log.error("[{}] {} (notification-service unreachable: {})", subject, detail, e.getMessage());
+            fallbackLog.error("[{}] {} (notification-service unreachable: {})", subject, detail, e.getMessage());
         }
     }
 

@@ -16,6 +16,9 @@ icad:
   api-key: dev-only-placeholder
   poll:
     interval-ms: 30000
+  # ADR-0020: RFP §3.8/§4.6's stated clearance window is 24-48 hours; a
+  # still-pending clearance older than this escalates to CREDIT_ADMIN.
+  escalation-sla: PT48H
 
 # ADR-0017: shared-platform's authentication-service now issues real RS256
 # tokens, verified here via its JWKS endpoint (no shared secret).
