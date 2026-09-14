@@ -19,6 +19,10 @@ dependencies {
 
     implementation("org.apache.camel.springboot:camel-spring-boot-starter")
     implementation("org.apache.camel.springboot:camel-kafka-starter")
+    // Needed for the first time by HttpNotificationClient's outbound call to
+    // notification-service (ADR-0019) — this adapter previously made no
+    // outbound HTTP calls of its own.
+    implementation("org.apache.camel.springboot:camel-http-starter")
 
     // Real OOXML (.xlsx) parsing — no mocked/hand-rolled reader (US8/US9).
     implementation("org.apache.poi:poi-ooxml:5.5.1")
@@ -33,5 +37,8 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers-junit-jupiter")
     testImplementation("org.testcontainers:testcontainers-kafka")
     testImplementation("org.awaitility:awaitility")
+    testImplementation("org.wiremock:wiremock-junit5:4.0.0-beta.38")
+    testImplementation("org.wiremock:wiremock-jetty:4.0.0-beta.38")
+    testImplementation("org.wiremock:wiremock-httpclient-apache5:4.0.0-beta.38")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }

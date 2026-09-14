@@ -1,0 +1,33 @@
+# ADR-0019: notification-service — recipient-group resolution, an unauthenticated internal endpoint, and which real triggers are wired
+
+## Status
+
+Accepted
+
+## Context
+
+`shared-platform`'s spec (issue #3) describes notification-service as "a single place every context sends an alert or notification through, regardless of channel" (RFP §3.4), with User Stories 7 (accept a request from any context), 9 (deliver via email without the caller knowing the mechanism), 10 (a Credit Admin gets notified on an escalated discrepancy), and 11 (record every send). It didn't exist — only a Gradle skeleton (`NotificationServiceApplication`, dependencies already declared: web, spring-kafka, spring-boot-starter-mail, audit-trail-lib). Every one of the four `integration` adapters already carried a `NotificationClient` interface with a `LoggingNotificationClient` stand-in, explicitly documented as "swap the implementation, not the interface, once the real context exists."
+
+Three design questions had no established precedent elsewhere in this repo: how to resolve "who gets this," whether the REST endpoint needs RBAC like every other endpoint in this codebase, and which of RFP §3.4's automated-notification triggers are real enough to actually wire up now versus later.
+
+## Decision
+
+**Recipient resolution is a static, configured group table** (`notification.recipients.groups.<NAME>` in `application.yml`), not a real staff-directory/HR lookup — no such system exists anywhere in this repo, not even in `reference-data-config` (which doesn't exist yet either). This is the same kind of honest placeholder as `DevUserSeeder`'s fixed dev accounts: a real, working mechanism for local/dev, explicitly not production-grade. An unresolved group is a hard failure (`400` from the REST path, caught-and-audited-only from a Kafka listener — never silently redirected to a default catch-all).
+
+**`POST /notifications` is deliberately not RBAC-gated.** Every other human-facing endpoint in this repo (the admin panel, ICAD clearance requests, Excel import) sits behind a role-bearing token because a human or the `channels` SPA calls it. This endpoint is called service-to-service only — by the four `integration` adapters today, other backend contexts later. There is no service-to-service auth mechanism anywhere in this repo, and none is warranted here: ADR-0004 puts the API Gateway + WAF at the single external ingress, so an internal-only endpoint behind that perimeter is trusted network, the same trust model this repo already gives Kafka consumption. This is the first internal-only REST endpoint in the codebase, so it's called out explicitly rather than left as an unstated assumption.
+
+**A failed send degrades, it never compounds.** A `JavaMailSender` failure is audited (`NOTIFICATION_FAILED`) and surfaces as `502` to a synchronous REST caller (mirroring ICAD's `pushAccount`-exhausted-retries convention), but is caught-and-logged (never rethrown) inside the two Kafka listeners — the same "don't block the partition on a message that will never succeed" principle `memo-balance`'s `MemoDetectedListener` already established. The four adapters' new `HttpNotificationClient` (replacing `LoggingNotificationClient`) applies the same rule one level up: if notification-service itself is unreachable, the alert falls back to the same local `ERROR` log the old stand-in always produced, rather than turning an already-bad situation (e.g., a fetchAccount failure) into an unhandled exception.
+
+**Two real Kafka triggers are wired; a third documented gap is not fabricated.** `mbp.memo-balance.liquidated` (real, already published) → notifies `RECOVERY_TEAM` (RFP §3.4 "Memo balance updates following liquidation"; the RBAC table's Recovery Team line is literally "liquidation tracking"). `mbp.integration.icad-clearance-outcome` (real, already published) with `status` in `{DISCREPANCY, FAILED, UNKNOWN}` → notifies `CREDIT_ADMIN` (RFP §3.4/§4.6 "issue notifications to stakeholders if discrepancies arise during ICAD clearance processes" + spec User Story 10). RFP §3.4's third bullet, "accounts flagged for review by Transaction Services or Credit Admin," has no corresponding event from any context today — no context publishes a "flagged for review" event yet. Per the spec's own Out of Scope section ("what triggers a notification in each business context — each context's own spec defines when it calls notification-service"), this is not fabricated with a fake event; it's left as an open interim seam until the owning context (likely `case-engagement` or `memo-balance`) publishes one.
+
+## Consequences
+
+- `services/shared-platform/notification-service` has no persistence of its own (no Postgres/Testcontainers-postgresql dependency, matching the original skeleton) — "record every notification sent" (User Story 11) is satisfied by `audit-trail-lib`'s log-based trail, the same mechanism every other service uses for its own audit obligations (ADR-0005), not a new domain table.
+- `docker-compose.yml` gains a `mailpit` service (fake-SMTP catcher, web UI at `localhost:8025`) for local/dev; tests use GreenMail (a real embedded SMTP server, not a mock) for an actual send-and-assert round trip.
+- The four `integration` adapters' `NotificationClient` interim seam is closed for real in the same ticket that builds notification-service — matching ADR-0017's precedent of fixing every documented downstream consumer once the real thing exists, not leaving the "swap the implementation" promise unfulfilled.
+- If a real staff-directory/HR system is ever introduced (most likely alongside `reference-data-config`'s Country model), `NotificationRecipientsProperties`'s static config should be replaced with a real lookup — the `NotificationService.send(recipientGroup, subject, body)` seam itself doesn't need to change.
+- If `case-engagement` or `memo-balance` later publishes a "flagged for review" event, wiring it into notification-service is a small, additive change (one more listener), not a redesign.
+
+## Source
+
+RFP §3.4, §4.6; Spec: shared-platform (issue #3) User Stories 7, 9, 10, 11; `services/integration/CONTEXT.md`'s "Notifications" interim seam (the four adapters' own documented expectation of this ADR).

@@ -1,5 +1,26 @@
 spring:
   application:
     name: notification-service
+  kafka:
+    bootstrap-servers: localhost:9092
+  mail:
+    # Local dev: docker-compose's mailpit service (a fake-SMTP catcher with a
+    # web UI at localhost:8025) — see docker-compose.yml.
+    host: localhost
+    port: 1025
+
 server:
   port: 8086
+
+notification:
+  from-address: mbp-notifications@uba.local
+  # ADR-0019: static, configured distribution lists — no real staff-directory/
+  # HR system exists anywhere in this repo to resolve these against for real.
+  recipients:
+    groups:
+      RECOVERY_TEAM:
+        - recovery-team@uba.local
+      CREDIT_ADMIN:
+        - credit-admin@uba.local
+      OPERATIONS:
+        - operations@uba.local
