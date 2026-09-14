@@ -139,6 +139,12 @@ class IcadClearanceProcessorTest {
         assertEquals("ACC-002", resolved.get(0).accountNumber());
         assertEquals(2, pendingStore.all().size());
         verify(notificationClient, times(1)).alertOperations(any(), any());
+
+        // System-wide-audit fix (2026-09-15): a fetch failure is now audited,
+        // not just ops-alerted — this class's own javadoc already claimed
+        // "auditing every call" before this was actually true.
+        verify(auditLogger, times(1)).record(argThat(event -> "ICAD_CLEARANCE_FETCH_FAILED".equals(event.action())
+                && "ACC-001".equals(event.affectedRecordId())));
     }
 
     @Test

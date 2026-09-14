@@ -1,6 +1,8 @@
 package com.uba.mbp.integration.icad.route;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.uba.mbp.audit.AuditEvent;
+import com.uba.mbp.audit.AuditLogger;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -10,6 +12,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -17,6 +20,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.testcontainers.containers.KafkaContainer;
@@ -33,7 +37,9 @@ import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -69,6 +75,9 @@ class IcadClearanceRouteTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @MockitoBean
+    private AuditLogger auditLogger;
 
     private Consumer<String, String> testConsumer;
 
@@ -193,5 +202,30 @@ class IcadClearanceRouteTest {
                         .contentType("application/json")
                         .content("{\"accountNumber\":\"ACC-1\",\"customerId\":\"C-1\",\"customerName\":\"X\"}"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void aPushFailureAudits502AndRecordsTheRealSubmittingActorNotSystem() throws Exception {
+        // System-wide-audit fix (2026-09-15): the audit entry for a failed
+        // push previously hardcoded actor "system", discarding the real
+        // submitting user the controller already knows. Real retries (3x,
+        // 2s base delay, x2 backoff) genuinely run here — this is an
+        // end-to-end proof, not a mocked-away shortcut.
+        wireMock.stubFor(com.github.tomakehurst.wiremock.client.WireMock.post(urlPathEqualTo("/icad/v1/accounts"))
+                .willReturn(aResponse().withStatus(500)));
+
+        String body = """
+                {"accountNumber":"ACC-999","customerId":"CUST-1","customerName":"Fails Push","bvn":"11111111111","clearedDate":"2026-01-10T00:00:00Z"}
+                """;
+
+        mockMvc.perform(post("/icad/clearance-requests").with(asCreditAdmin())
+                        .contentType("application/json").content(body))
+                .andExpect(status().isBadGateway());
+
+        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditLogger).record(captor.capture());
+        assertEquals("ICAD_CLEARANCE_PUSH_FAILED", captor.getValue().action());
+        assertEquals("credit-admin-1", captor.getValue().actor());
+        assertEquals("ACC-999", captor.getValue().affectedRecordId());
     }
 }

@@ -160,8 +160,14 @@ public class IcadClearanceRoute extends RouteBuilder {
     private void auditPushFailureIfKnown(Exchange exchange) {
         ClearanceRequest failedRequest = exchange.getProperty("clearanceRequest", ClearanceRequest.class);
         if (failedRequest != null) {
+            // System-wide-audit fix (2026-09-15): the real submitting user is
+            // knowable (the controller sets it as the "actor" header, still
+            // present on the same Exchange through retries) but was previously
+            // discarded in favor of a hardcoded "system" — breaking
+            // traceability for a compliance-sensitive push failure.
+            String actor = exchange.getIn().getHeader("actor", String.class);
             auditLogger.record(new AuditEvent(
-                    clock.instant(), "system", "ICAD_CLEARANCE_PUSH_FAILED", "MemoAccount",
+                    clock.instant(), actor != null ? actor : "system", "ICAD_CLEARANCE_PUSH_FAILED", "MemoAccount",
                     failedRequest.accountNumber(), "icad-integration-adapter", failureDetail(exchange)));
         }
     }

@@ -80,7 +80,14 @@ public class MemoIngestionService {
     }
 
     private void validate(MemoDetectedEvent event) {
-        if (isBlank(event.accountNumber()) || isBlank(event.currency()) || isBlank(event.narration())) {
+        // System-wide-audit fix (2026-09-15): transferDate/balance weren't
+        // checked here — only country is documented as nullable-and-tolerated
+        // (see CountryConfigLookup). A null transferDate on a repeat
+        // detection previously reached MemoAccount.mergeRepeatDetection's
+        // transferDate.isBefore(...) call and threw an uncaught NPE instead
+        // of degrading the same way an already-handled malformed event does.
+        if (isBlank(event.accountNumber()) || isBlank(event.currency()) || isBlank(event.narration())
+                || event.transferDate() == null || event.balance() == null) {
             auditLogger.record(new AuditEvent(
                     clock.instant(),
                     "system",
@@ -88,9 +95,10 @@ public class MemoIngestionService {
                     "MemoDetectedEvent",
                     event.accountNumber(),
                     "memo-balance",
-                    "Missing a required field (accountNumber, currency, or narration): " + event));
+                    "Missing a required field (accountNumber, currency, narration, transferDate, or balance): " + event));
             throw new InvalidMemoDetectedEventException(
-                    "MemoDetected event is missing a required field (accountNumber, currency, or narration)");
+                    "MemoDetected event is missing a required field "
+                            + "(accountNumber, currency, narration, transferDate, or balance)");
         }
     }
 

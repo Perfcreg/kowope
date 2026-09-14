@@ -91,6 +91,17 @@ public class IcadClearanceProcessor {
                 notificationClient.alertOperations(
                         "icad-integration-adapter fetchAccount failed for " + pending.icadReference(),
                         String.valueOf(e.getMessage()));
+                // System-wide-audit fix (2026-09-15): this class's own javadoc
+                // already claimed "auditing every call (User Story 13)" — a
+                // repeated fetch failure wasn't actually audited, only
+                // ops-alerted. A string of failed fetches for the same
+                // reference is exactly the kind of anomaly the audit trail
+                // should be able to answer "how long has this been failing?"
+                // for, not just today's live ops alert.
+                auditLogger.record(new AuditEvent(
+                        clock.instant(), "system", "ICAD_CLEARANCE_FETCH_FAILED", "MemoAccount",
+                        pending.accountNumber(), SOURCE,
+                        "icadReference=" + pending.icadReference() + " error=" + e.getMessage()));
                 continue;
             }
             if (!fetchResult.isResolved()) {

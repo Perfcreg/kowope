@@ -109,6 +109,24 @@ class MemoDetectedListenerTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void rejectsADetectionWithANullTransferDateInsteadOfCrashingOnARepeatDetection() {
+        // System-wide-audit fix: a null transferDate previously reached
+        // MemoAccount.mergeRepeatDetection's transferDate.isBefore(...) call
+        // uncaught — this must degrade the same way a missing currency does,
+        // not NPE.
+        String accountNumber = "ACC-" + System.nanoTime();
+        MemoDetectedEvent invalidEvent = new MemoDetectedEvent(
+                accountNumber, "CUST-1", "SOL-001", "NGN", "TXN-REF-1",
+                "written off", new BigDecimal("100.00"), null,
+                "write-off-detection-service", "NG");
+
+        kafkaTemplate.send(MemoTopics.MEMO_DETECTED, accountNumber, invalidEvent);
+
+        await().pollDelay(3, SECONDS).atMost(10, SECONDS)
+                .untilAsserted(() -> assertFalse(repository.findByAccountNumber(accountNumber).isPresent()));
+    }
+
+    @Test
     void updatesAnExistingRecordOnARepeatDetectionPreservingTheEarliestTransferDate() {
         String accountNumber = "ACC-" + System.nanoTime();
         Instant earlierTransferDate = Instant.parse("2026-01-01T00:00:00Z");
