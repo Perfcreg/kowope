@@ -67,14 +67,26 @@ public class AdminUserService {
      * {@code DevUserSeeder}'s own, separate concern).
      */
     public CreatedUser createUser(String username, String rawPassword, Set<Role> roles, String actorUsername) {
-        if (isBlank(username)) {
-            throw new IllegalArgumentException("username is required");
-        }
-        if (isBlank(rawPassword)) {
-            throw new IllegalArgumentException("password is required");
-        }
-        if (userRepository.findByUsername(username).isPresent()) {
-            throw new UsernameAlreadyExistsException("A user named '" + username + "' already exists");
+        try {
+            if (isBlank(username)) {
+                throw new IllegalArgumentException("username is required");
+            }
+            if (isBlank(rawPassword)) {
+                throw new IllegalArgumentException("password is required");
+            }
+            if (userRepository.findByUsername(username).isPresent()) {
+                throw new UsernameAlreadyExistsException("A user named '" + username + "' already exists");
+            }
+        } catch (RuntimeException e) {
+            // System-wide-audit fix (2026-09-15): a rejected admin write must
+            // still leave an audit trail entry — a duplicate-username attempt
+            // is exactly the kind of probing/misconfiguration signal RFP
+            // §4.3's audit trail exists to catch, not just successful writes.
+            // Same fix already applied in notification-service and
+            // reference-data-config; this was the original instance of the
+            // pattern and was missed when it was first established.
+            audit(actorUsername, "USER_CREATE_REJECTED", isBlank(username) ? "unknown" : username, e.getMessage());
+            throw e;
         }
         String mfaSecret = totpService.generateSecret();
         User user = User.enroll(username, passwordEncoder.encode(rawPassword), mfaSecret, roles, clock.instant());
@@ -98,23 +110,33 @@ public class AdminUserService {
      * against the admin panel locking every administrator out of itself.
      */
     public UserSummary replaceRoles(String targetUsername, Set<Role> newRoles, String actorUsername) {
-        if (newRoles == null || newRoles.isEmpty()) {
-            throw new IllegalArgumentException("At least one role is required");
-        }
         synchronized (lastAdminLock) {
-            User user = userRepository.findByUsername(targetUsername)
-                    .orElseThrow(() -> new UserNotFoundException("No user named '" + targetUsername + "'"));
+            User user;
+            try {
+                if (newRoles == null || newRoles.isEmpty()) {
+                    throw new IllegalArgumentException("At least one role is required");
+                }
+                user = userRepository.findByUsername(targetUsername)
+                        .orElseThrow(() -> new UserNotFoundException("No user named '" + targetUsername + "'"));
 
-            Set<Role> oldRoles = Set.copyOf(user.getRoles());
-            boolean losingAdmin = oldRoles.contains(Role.ADMIN) && !newRoles.contains(Role.ADMIN);
-            if (losingAdmin && userRepository.countByRole(Role.ADMIN) <= 1) {
-                throw new LastAdminException(
-                        "Refusing to remove ADMIN from '" + targetUsername + "': they are the last remaining administrator");
+                Set<Role> oldRoles = Set.copyOf(user.getRoles());
+                boolean losingAdmin = oldRoles.contains(Role.ADMIN) && !newRoles.contains(Role.ADMIN);
+                if (losingAdmin && userRepository.countByRole(Role.ADMIN) <= 1) {
+                    throw new LastAdminException(
+                            "Refusing to remove ADMIN from '" + targetUsername + "': they are the last remaining administrator");
+                }
+
+                user.replaceRoles(newRoles, clock.instant());
+                userRepository.save(user);
+                audit(actorUsername, "USER_ROLES_CHANGED", targetUsername, "Roles " + oldRoles + " -> " + newRoles);
+            } catch (RuntimeException e) {
+                // System-wide-audit fix (2026-09-15): an attempt to strip the
+                // last administrator (or any other rejected role-change
+                // attempt) must still leave an audit trail entry — see the
+                // matching fix and rationale in createUser above.
+                audit(actorUsername, "USER_ROLES_CHANGE_REJECTED", targetUsername, e.getMessage());
+                throw e;
             }
-
-            user.replaceRoles(newRoles, clock.instant());
-            userRepository.save(user);
-            audit(actorUsername, "USER_ROLES_CHANGED", targetUsername, "Roles " + oldRoles + " -> " + newRoles);
             return new UserSummary(user.getUsername(), user.getRoles(), user.getCreatedAt());
         }
     }

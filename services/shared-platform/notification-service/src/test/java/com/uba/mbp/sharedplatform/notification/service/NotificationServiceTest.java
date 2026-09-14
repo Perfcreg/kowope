@@ -59,6 +59,10 @@ class NotificationServiceTest {
         verify(auditLogger).record(auditCaptor.capture());
         assertThat(auditCaptor.getValue().action()).isEqualTo("NOTIFICATION_SENT");
         assertThat(auditCaptor.getValue().affectedRecordId()).isEqualTo("RECOVERY_TEAM");
+        // System-wide-audit fix (2026-09-15): the actual resolved address(es)
+        // must be in the trail, not just the group name — an auditor asking
+        // "who exactly was emailed" must be able to answer it from this entry.
+        assertThat(auditCaptor.getValue().detail()).contains("recovery-team@uba.local");
     }
 
     @Test

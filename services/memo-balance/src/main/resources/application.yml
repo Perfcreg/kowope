@@ -1,6 +1,15 @@
 spring:
   application:
     name: memo-balance
+  servlet:
+    multipart:
+      # System-wide-audit fix (2026-09-15): document upload had no size limit
+      # at all — an unbounded MultipartFile read straight to disk is a real
+      # resource-exhaustion risk, not something RFP §3.11's "no format
+      # restriction" ask required. Matches excel-import-service's own limit.
+      max-file-size: 10MB
+      max-request-size: 10MB
+      file-size-threshold: 10MB
   datasource:
     url: jdbc:postgresql://localhost:5432/mbp
     username: mbp

@@ -82,9 +82,13 @@ public class NotificationService {
             throw new NotificationDeliveryException("Failed to send notification to group: " + recipientGroup, e);
         }
 
+        // System-wide-audit fix (2026-09-15): record who was actually
+        // emailed, not just which group and how many — spec User Story 11
+        // asks for "recipient" in the trail, and a group name alone can't
+        // answer "who exactly was told about account X."
         auditLogger.record(new AuditEvent(
                 sentAt, "system", "NOTIFICATION_SENT", "RecipientGroup", recipientGroup,
-                SOURCE, "subject=" + subject + " recipients=" + recipients.size()));
+                SOURCE, "subject=" + subject + " recipients=" + String.join(",", recipients)));
 
         return new NotificationResult(recipientGroup, recipients, sentAt);
     }

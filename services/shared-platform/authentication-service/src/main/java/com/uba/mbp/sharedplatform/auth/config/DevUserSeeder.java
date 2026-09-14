@@ -21,11 +21,18 @@ import java.util.EnumSet;
  * pattern ADR-0012 already established for Fineract's mifos/password.
  *
  * <p>Idempotent (checks existence first) so it's safe to run on every
- * startup, and off by default outside local dev via
- * {@code app.seed-dev-users}.
+ * startup, and requires {@code app.seed-dev-users=true} to be explicitly set
+ * — local dev's own committed {@code application.yml} sets it, but any
+ * environment that doesn't carry that property forward defaults to OFF.
+ * System-wide-audit fix (2026-09-15): this previously defaulted ON
+ * ({@code matchIfMissing = true}) despite this same Javadoc already
+ * claiming the opposite — an environment that simply forgot to override the
+ * property, rather than one that deliberately opted in, would have silently
+ * seeded every dev account including the {@code admin.dev} bootstrap
+ * administrator with its committed password.
  */
 @Component
-@ConditionalOnProperty(name = "app.seed-dev-users", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(name = "app.seed-dev-users", havingValue = "true", matchIfMissing = false)
 public class DevUserSeeder implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(DevUserSeeder.class);
