@@ -4,10 +4,14 @@ import com.uba.mbp.memobalance.AbstractIntegrationTest;
 import com.uba.mbp.memobalance.domain.MemoAccount;
 import com.uba.mbp.memobalance.domain.MemoStatus;
 import com.uba.mbp.memobalance.event.MemoDetectedEvent;
+import com.uba.mbp.memobalance.referencedata.CountryConfig;
+import com.uba.mbp.memobalance.referencedata.CountryConfigLookup;
 import com.uba.mbp.memobalance.repository.MemoAccountRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -18,11 +22,20 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 /**
  * Ticket 01: ingest a detected write-off and create a Memo record.
  * Ticket 02: de-duplicate repeat detections for an already-tracked account.
  * Seam under test: the Kafka consumer boundary (publish -> assert persisted state).
+ *
+ * <p>{@link CountryConfigLookup} is mocked, not the real {@code
+ * HttpCountryConfigLookup} — this test suite's seam is the Kafka consumer
+ * boundary, not reference-data-config's own REST contract (that's this
+ * ticket's own {@code CountryAdminControllerFlowTest}/{@code
+ * CountryReadControllerFlowTest}), same precedent as every other
+ * cross-context client mocked at this repo's test boundaries.
  */
 class MemoDetectedListenerTest extends AbstractIntegrationTest {
 
@@ -31,6 +44,15 @@ class MemoDetectedListenerTest extends AbstractIntegrationTest {
 
     @Autowired
     private MemoAccountRepository repository;
+
+    @MockitoBean
+    private CountryConfigLookup countryConfigLookup;
+
+    @BeforeEach
+    void stubCountryConfig() {
+        when(countryConfigLookup.lookup(any()))
+                .thenReturn(new CountryConfig("NG", "NGN", "GL-WRITEOFF-NG", "GL-RECOVERY-NG"));
+    }
 
     @Test
     void createsANewMemoRecordFromAValidDetection() {

@@ -1,5 +1,32 @@
 spring:
   application:
     name: reference-data-config
+  datasource:
+    url: jdbc:postgresql://localhost:5432/mbp
+    username: mbp
+    password: mbp
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+    properties:
+      hibernate:
+        default_schema: reference_data_config
+  # ADR-0021: this service gets its own Postgres schema — memo-balance and
+  # authentication-service share the default "public" schema (and therefore
+  # one flyway_schema_history table) against the same local "mbp" database
+  # with no isolation, a real pre-existing collision this service doesn't
+  # repeat. Flyway creates the schema if it doesn't exist yet.
+  flyway:
+    enabled: true
+    schemas: reference_data_config
+
 server:
   port: 8087
+
+# ADR-0017: shared-platform's authentication-service issues real RS256
+# tokens, verified here via its JWKS endpoint (no shared secret) — the
+# admin-write API's hasRole("ADMIN") check (ADR-0018's role).
+security:
+  jwt:
+    jwk-set-uri: http://localhost:8085/.well-known/jwks.json

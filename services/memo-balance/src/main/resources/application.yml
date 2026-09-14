@@ -30,3 +30,8 @@ security:
     # ADR-0017: shared-platform's authentication-service now issues real
     # RS256 tokens, verified here via its JWKS endpoint (no shared secret).
     jwk-set-uri: http://localhost:8085/.well-known/jwks.json
+
+# ADR-0021: reference-data-config now real — HttpCountryConfigLookup replaces
+# the old StaticCountryConfigLookup stand-in.
+reference-data-config:
+  base-url: http://localhost:8087
