@@ -1,10 +1,10 @@
 package com.uba.mbp.integration.icad.notification;
 
+import com.uba.mbp.integration.icad.config.NotificationServiceProperties;
 import org.apache.camel.Exchange;
 import org.apache.camel.ProducerTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -30,10 +30,10 @@ public class HttpNotificationClient implements NotificationClient {
     private final String baseUrl;
 
     public HttpNotificationClient(ProducerTemplate producerTemplate, ObjectMapper objectMapper,
-                                   @Value("${notification.service.base-url}") String baseUrl) {
+                                   NotificationServiceProperties properties) {
         this.producerTemplate = producerTemplate;
         this.objectMapper = objectMapper;
-        this.baseUrl = baseUrl;
+        this.baseUrl = properties.getBaseUrl();
     }
 
     @Override

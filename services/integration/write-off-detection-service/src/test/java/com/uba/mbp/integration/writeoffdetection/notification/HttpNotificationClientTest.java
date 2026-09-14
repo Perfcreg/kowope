@@ -1,6 +1,7 @@
 package com.uba.mbp.integration.writeoffdetection.notification;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.uba.mbp.integration.writeoffdetection.config.NotificationServiceProperties;
 import org.apache.camel.CamelContext;
 import org.apache.camel.ProducerTemplate;
 import org.apache.camel.impl.DefaultCamelContext;
@@ -38,7 +39,10 @@ class HttpNotificationClientTest {
 
         ObjectMapper objectMapper = JsonMapper.builder().build();
 
-        client = new HttpNotificationClient(producerTemplate, objectMapper, "http://localhost:" + wireMock.port());
+        NotificationServiceProperties properties = new NotificationServiceProperties();
+        properties.setBaseUrl("http://localhost:" + wireMock.port());
+
+        client = new HttpNotificationClient(producerTemplate, objectMapper, properties);
     }
 
     @AfterEach
