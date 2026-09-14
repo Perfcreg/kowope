@@ -71,4 +71,25 @@ class HttpNotificationClientTest {
         client.alertOperations("fetchAccount failed", "boom");
         // No exception propagated — the alert falls back to the local log.
     }
+
+    @Test
+    void escalatePostsToNotificationServiceWithTheGivenRecipientGroup() {
+        wireMock.stubFor(post(urlEqualTo("/notifications"))
+                .willReturn(aResponse().withStatus(200)));
+
+        client.escalate("CREDIT_ADMIN", "ICAD clearance overdue: ACC-001", "pending too long");
+
+        wireMock.verify(postRequestedFor(urlEqualTo("/notifications"))
+                .withRequestBody(equalToJson("""
+                        {"recipientGroup":"CREDIT_ADMIN","subject":"ICAD clearance overdue: ACC-001","body":"pending too long"}
+                        """)));
+    }
+
+    @Test
+    void aNotificationServiceOutageDuringEscalationIsSwallowedNotRethrown() {
+        wireMock.stop();
+
+        client.escalate("CREDIT_ADMIN", "ICAD clearance overdue: ACC-001", "pending too long");
+        // No exception propagated — the escalation falls back to the local log.
+    }
 }

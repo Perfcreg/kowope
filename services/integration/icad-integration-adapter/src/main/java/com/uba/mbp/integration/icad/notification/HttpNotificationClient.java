@@ -38,9 +38,18 @@ public class HttpNotificationClient implements NotificationClient {
 
     @Override
     public void alertOperations(String subject, String detail) {
+        post(RECIPIENT_GROUP, subject, detail);
+    }
+
+    @Override
+    public void escalate(String recipientGroup, String subject, String detail) {
+        post(recipientGroup, subject, detail);
+    }
+
+    private void post(String recipientGroup, String subject, String detail) {
         try {
             String requestJson = objectMapper.writeValueAsString(
-                    new NotificationRequestBody(RECIPIENT_GROUP, subject, detail));
+                    new NotificationRequestBody(recipientGroup, subject, detail));
             Map<String, Object> headers = Map.of(
                     Exchange.HTTP_METHOD, "POST",
                     Exchange.CONTENT_TYPE, "application/json");
