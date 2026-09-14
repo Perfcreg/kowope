@@ -22,7 +22,12 @@ import java.util.Map;
 @Component
 public class HttpNotificationClient implements NotificationClient {
 
-    private static final Logger log = LoggerFactory.getLogger("OPERATIONS_ALERT");
+    // Two distinct log categories, not one shared "OPERATIONS_ALERT" logger
+    // (Standards finding, 2026-09-14): an ops-page and a business-stakeholder
+    // escalation failure are different signals a log-filter needs to tell
+    // apart without parsing message text.
+    private static final Logger opsLog = LoggerFactory.getLogger("OPERATIONS_ALERT");
+    private static final Logger escalationLog = LoggerFactory.getLogger("ESCALATION_ALERT");
     private static final String RECIPIENT_GROUP = "OPERATIONS";
 
     private final ProducerTemplate producerTemplate;
@@ -38,15 +43,15 @@ public class HttpNotificationClient implements NotificationClient {
 
     @Override
     public void alertOperations(String subject, String detail) {
-        post(RECIPIENT_GROUP, subject, detail);
+        post(RECIPIENT_GROUP, subject, detail, opsLog);
     }
 
     @Override
     public void escalate(String recipientGroup, String subject, String detail) {
-        post(recipientGroup, subject, detail);
+        post(recipientGroup, subject, detail, escalationLog);
     }
 
-    private void post(String recipientGroup, String subject, String detail) {
+    private void post(String recipientGroup, String subject, String detail, Logger fallbackLog) {
         try {
             String requestJson = objectMapper.writeValueAsString(
                     new NotificationRequestBody(recipientGroup, subject, detail));
@@ -55,7 +60,7 @@ public class HttpNotificationClient implements NotificationClient {
                     Exchange.CONTENT_TYPE, "application/json");
             producerTemplate.requestBodyAndHeaders(baseUrl + "/notifications", requestJson, headers, String.class);
         } catch (RuntimeException e) {
-            log.error("[{}] {} (notification-service unreachable: {})", subject, detail, e.getMessage());
+            fallbackLog.error("[{}] {} (notification-service unreachable: {})", subject, detail, e.getMessage());
         }
     }
 

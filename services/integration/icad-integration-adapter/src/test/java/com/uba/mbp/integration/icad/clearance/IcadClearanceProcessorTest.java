@@ -1,15 +1,22 @@
 package com.uba.mbp.integration.icad.clearance;
 
+import com.github.tomakehurst.wiremock.WireMockServer;
 import com.uba.mbp.audit.AuditLogger;
 import com.uba.mbp.integration.icad.client.IcadClearanceStatus;
 import com.uba.mbp.integration.icad.client.IcadClient;
 import com.uba.mbp.integration.icad.client.IcadFetchResult;
 import com.uba.mbp.integration.icad.client.IcadPushResult;
 import com.uba.mbp.integration.icad.config.IcadProperties;
+import com.uba.mbp.integration.icad.config.NotificationServiceProperties;
 import com.uba.mbp.integration.icad.event.IcadClearanceOutcomeEvent;
+import com.uba.mbp.integration.icad.notification.HttpNotificationClient;
 import com.uba.mbp.integration.icad.notification.NotificationClient;
+import org.apache.camel.CamelContext;
+import org.apache.camel.ProducerTemplate;
+import org.apache.camel.impl.DefaultCamelContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -17,6 +24,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -202,5 +210,49 @@ class IcadClearanceProcessorTest {
         processor.pollForOutcomes();
 
         verify(notificationClient, times(2)).escalate(eq("CREDIT_ADMIN"), any(), any());
+    }
+
+    @Test
+    void anUnreachableNotificationServiceDuringEscalationStillRecordsTheAuditEvent() throws Exception {
+        // Security-axis re-verification: HttpNotificationClient.escalate() must
+        // swallow the failure (ADR-0019), but that must not silently suppress
+        // the ICAD_CLEARANCE_ESCALATED audit record too — real HttpNotificationClient
+        // against an unreachable notification-service, not a mock, proves this
+        // end-to-end rather than assuming it from the two halves separately.
+        WireMockServer wireMock = new WireMockServer(0);
+        wireMock.start();
+        int deadPort = wireMock.port();
+        wireMock.stop();
+
+        CamelContext camelContext = new DefaultCamelContext();
+        camelContext.start();
+        ProducerTemplate producerTemplate = camelContext.createProducerTemplate();
+        NotificationServiceProperties notificationProperties = new NotificationServiceProperties();
+        notificationProperties.setBaseUrl("http://localhost:" + deadPort);
+        NotificationClient realNotificationClient =
+                new HttpNotificationClient(producerTemplate, JsonMapper.builder().build(), notificationProperties);
+
+        AuditLogger realTestAuditLogger = mock(AuditLogger.class);
+        PendingClearanceStore realTestStore = new InMemoryPendingClearanceStore();
+        IcadProperties realTestProperties = new IcadProperties();
+        realTestProperties.setEscalationSla(Duration.ofHours(48));
+        Instant pushedAt = NOW.minus(Duration.ofHours(49));
+        realTestStore.add(new PendingClearance("REF-001", "ACC-001", "CUST-1", pushedAt));
+
+        IcadClient realTestIcadClient = mock(IcadClient.class);
+        when(realTestIcadClient.fetchAccount("REF-001"))
+                .thenReturn(new IcadFetchResult("REF-001", IcadClearanceStatus.PENDING, null));
+        Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+        IcadClearanceProcessor realTestProcessor = new IcadClearanceProcessor(
+                realTestIcadClient, realTestStore, realTestAuditLogger, realNotificationClient, clock, realTestProperties);
+
+        try {
+            assertDoesNotThrow(realTestProcessor::pollForOutcomes);
+
+            verify(realTestAuditLogger, times(1)).record(argThat(event ->
+                    "ICAD_CLEARANCE_ESCALATED".equals(event.action()) && "ACC-001".equals(event.affectedRecordId())));
+        } finally {
+            camelContext.stop();
+        }
     }
 }

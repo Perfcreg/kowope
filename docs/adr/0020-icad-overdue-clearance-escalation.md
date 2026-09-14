@@ -24,6 +24,8 @@ Scope the escalation engine to **overdue ICAD clearances only**, built inside `i
 
 This is a **different** trigger from Ticket 03's `IcadClearanceOutcomeListener` (which notifies `CREDIT_ADMIN` when ICAD *responds* with `DISCREPANCY`/`FAILED`/`UNKNOWN`). This ADR covers ICAD *not responding at all* within the acceptable window — the clearance is still `PENDING`.
 
+- **A shared `"OPERATIONS_ALERT"` logger name covering both ops alerts and escalation failures** was a real, minor find (enterprise-review, 2026-09-14, Standards axis): `HttpNotificationClient`'s fallback-on-failure log line used one logger category for two distinct signals (an internal ops page vs. a business-stakeholder escalation failing to send), making them indistinguishable without parsing message text. Fixed with a second, distinctly-named logger (`ESCALATION_ALERT`) for the `escalate()` path. A companion test (`anUnreachableNotificationServiceDuringEscalationStillRecordsTheAuditEvent`, Security & Compliance axis) was added to prove end-to-end — with a real `HttpNotificationClient` against an unreachable notification-service, not a mock — that a swallowed HTTP failure during escalation never suppresses the `ICAD_CLEARANCE_ESCALATED` audit record.
+
 ## Consequences
 
 - `escalatedReferences` is in-memory only, the same restart-loses-state nature as `PendingClearanceStore` itself (ADR-0015) — a restart re-arms escalation for anything still overdue. This is the safe failure direction (re-escalates rather than silently never escalating again), not a new risk category.
