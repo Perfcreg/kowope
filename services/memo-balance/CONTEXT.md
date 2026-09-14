@@ -44,6 +44,9 @@ Both defined by memo-balance itself, as the producing contexts (`integration`) d
 
 ## Interim seams (swap the implementation, not the interface, once the real context exists)
 
-- **RBAC**: `JwtRoleConverter` reads a `roles` claim from the JWT; a dev-only symmetric key decodes it (`SecurityConfig`) until `shared-platform`'s authentication-service issues real tokens.
-- **Country/GL mapping**: `CountryConfigLookup` — `StaticCountryConfigLookup` is a fixed in-memory stand-in until `reference-data-config` exists.
 - **Document storage**: `DocumentStorage` — `LocalFilesystemDocumentStorage` writes to a local directory, unencrypted, until real Blob storage (ADR-0003) is provisioned.
+
+## Closed seams
+
+- **RBAC**: `JwtRoleConverter` validates real RS256 tokens issued by `shared-platform`'s authentication-service, verified via its JWKS endpoint (ADR-0017) — the dev-only symmetric key this bullet used to describe is gone.
+- **Country/GL mapping**: `CountryConfigLookup` is now backed by `HttpCountryConfigLookup`, calling `reference-data-config`'s real `GET /countries/{code}` (ADR-0021) — `StaticCountryConfigLookup` is deleted. A null/unrecognized/unreachable country still falls back to the NG default, same behavior as the old stand-in.

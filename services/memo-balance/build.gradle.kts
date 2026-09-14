@@ -27,5 +27,8 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers-postgresql")
     testImplementation("org.testcontainers:testcontainers-kafka")
     testImplementation("org.awaitility:awaitility")
+    testImplementation("org.wiremock:wiremock-junit5:4.0.0-beta.38")
+    testImplementation("org.wiremock:wiremock-jetty:4.0.0-beta.38")
+    testImplementation("org.wiremock:wiremock-httpclient-apache5:4.0.0-beta.38")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
